@@ -298,14 +298,22 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
   object-fit: cover;
   z-index: -1; /* картинка под рамкой */
 }
+/* Подпись переносится, но не больше двух строк; место под две строки есть всегда,
+   чтобы подписи групп стояли на одной линии. */
 .kh-tile-name {
-  max-width: 60px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  width: 60px;
+  min-height: 2.4em;
   font-size: 11px;
   line-height: 1.2;
+  text-align: center;
   color: var(--kh-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere; /* слово длиннее плитки всё равно не вылезет за край */
+  hyphens: auto;
 }
 
 .kh-group-label {
