@@ -74,5 +74,32 @@
       </div>
     </div>
   </div>
+
+  {{!-- Способности: группы по типу действия, под каждой — подпись с ромбом --}}
+  {{#if groups.length}}
+  <div class="kh-center">
+    <img class="kh-crest" src="{{assets}}/panel-crest.png" alt="">
+    <div class="kh-groups">
+      {{#each groups}}
+      <div class="kh-group kh-group-{{key}}">
+        <div class="kh-tiles">
+          {{#each tiles}}
+          <div class="kh-tile" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" data-tooltip="{{name}}">
+            <span class="kh-tile-slot">
+              <img class="kh-tile-img" src="{{img}}" alt="">
+            </span>
+            <span class="kh-tile-name">{{label}}</span>
+          </div>
+          {{/each}}
+        </div>
+        <div class="kh-group-label">
+          {{#if gem}}<img src="{{@root.assets}}/{{gem}}.png" alt="">{{/if}}
+          <span>{{label}}</span>
+        </div>
+      </div>
+      {{/each}}
+    </div>
+  </div>
+  {{/if}}
 {{/if}}
 </div>
