@@ -75,8 +75,9 @@ const TABS = [
  * от левого края окна до боковой панели Foundry (чат и вкладки), минус левый блок HUD
  * и запас под будущий правый блок (инвентарь, лист, «Завершить ход»).
  */
-const TILE_WIDTH = 64;        // плитка 60 px + промежуток
-const LEFT_BLOCK_WIDTH = 640; // портрет, сфера и левая панель
+const TILE_WIDTH = 53;        // плитка 50 px + промежуток
+const HUD_LEFT = 12;          // отступ HUD от левого края (hud.css)
+const LEFT_BLOCK_WIDTH = 620; // портрет, сфера и левая панель
 const RIGHT_RESERVE = 220;    // будущий правый блок
 const PANEL_EXTRAS = 160;     // рамка панели, разделители групп, отступы
 const COLUMNS_MIN = 5;
@@ -90,7 +91,7 @@ function freeAreaRight() {
 }
 
 function pageColumns() {
-  const free = freeAreaRight() - LEFT_BLOCK_WIDTH - RIGHT_RESERVE - PANEL_EXTRAS;
+  const free = freeAreaRight() - HUD_LEFT - LEFT_BLOCK_WIDTH - RIGHT_RESERVE - PANEL_EXTRAS;
   return Math.clamp(Math.floor(free / TILE_WIDTH), COLUMNS_MIN, COLUMNS_MAX);
 }
 
@@ -552,8 +553,6 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   /** После отрисовки плавно «переливаем» кровь от старого уровня ПЗ к новому. */
   _onRender(context, options) {
     super._onRender?.(context, options);
-    // HUD центрируется в свободной области слева от боковой панели Foundry (см. hud.css).
-    this.element.style.setProperty("--kh-area-right", `${freeAreaRight()}px`);
     const blood = this.element.querySelector(".kh-orb-blood");
     const sameActor = this._lastActorId && this._lastActorId === this.actor?.id;
     if (blood && sameActor && this._lastMissing !== context.hp?.missing) {
@@ -786,6 +785,16 @@ Hooks.once("init", () => {
     default: false
   });
 
+  game.settings.register(MODULE_ID, "hidePlayers", {
+    name: "Скрывать список игроков",
+    hint: "Пока HUD открыт, список игроков в левом нижнем углу прячется: на его месте стоит HUD.",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: (value) => document.body.classList.toggle("khvor-hide-players", value)
+  });
+
   game.settings.register(MODULE_ID, "hideHotbar", {
     name: "Скрывать стандартную панель макросов",
     hint: "Пока HUD открыт, стандартная панель макросов внизу экрана прячется, чтобы не перекрываться с ним.",
@@ -801,6 +810,7 @@ Hooks.once("ready", () => {
   const hud = new KhvorHud();
   game.modules.get(MODULE_ID).api = { hud };
   document.body.classList.toggle("khvor-hide-hotbar", game.settings.get(MODULE_ID, "hideHotbar"));
+  document.body.classList.toggle("khvor-hide-players", game.settings.get(MODULE_ID, "hidePlayers"));
 
   // Перерисовка не чаще раза в 50 мс, даже если событий много подряд.
   const refresh = foundry.utils.debounce(() => hud.render({ force: true }), 50);

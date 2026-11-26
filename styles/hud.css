@@ -13,10 +13,10 @@
   --kh-sans: "Alegreya Sans", "Signika", sans-serif;
 
   position: fixed;
-  /* Центр свободной области: от левого края до боковой панели Foundry (--kh-area-right ставит main.js) */
-  left: calc(var(--kh-area-right, 100vw) / 2);
+  /* Прижат к левому краю; список игроков Foundry на это время прячется (настройка hidePlayers).
+     Справа HUD не заходит на боковую панель: число плиток считает main.js (pageColumns). */
+  left: 12px;
   bottom: 10px;
-  transform: translateX(-50%);
   width: max-content; /* без этого ширина HUD ограничена половиной экрана */
   z-index: 60;
   pointer-events: none; /* клики мимо панелей проходят на сцену */
@@ -25,6 +25,7 @@
 }
 
 body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
+body.khvor-hud-active.khvor-hide-players #players { display: none; }
 
 /* Сброс стилей кнопок Foundry внутри HUD.
    :where() обнуляет вес селектора, чтобы классы ниже (.kh-...) могли его перебить. */
@@ -54,8 +55,8 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
 .kh-portrait {
   position: relative;
   display: block;
-  width: 126px;
-  height: 169px; /* пропорция рамки 239:320 */
+  width: 145px;
+  height: 194px; /* пропорция рамки 239:320 */
   filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.75));
 }
 /* Окно рамки: x 16–222, y 46–274 из 239×320 */
@@ -83,14 +84,39 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
   pointer-events: none;
 }
 .kh-portrait:hover .kh-portrait-frame { filter: brightness(1.35); }
-/* Концентрация — фиолетовое свечение вокруг портрета */
+/* Концентрация — фиолетовое свечение вокруг портрета и светлая дуга, которая бежит по рамке */
+@property --kh-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+.kh-portrait.is-concentrating::after {
+  content: "";
+  position: absolute;
+  inset: 3px 2px;
+  z-index: 2;
+  padding: 3px; /* толщина бегущего кольца */
+  border-radius: 6px;
+  background: conic-gradient(from var(--kh-angle), transparent 0 68%, rgba(180, 140, 255, 0.6) 80%, #f3e9ff 88%, transparent 96%);
+  /* Оставляем только кольцо: из полной заливки вычитаем внутреннюю часть (content-box) */
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px #b48cff);
+  animation: kh-orbit 2.4s linear infinite;
+  pointer-events: none;
+}
+@keyframes kh-orbit { to { --kh-angle: 360deg; } }
+@media (prefers-reduced-motion: reduce) {
+  .kh-portrait.is-concentrating::after { animation: none; }
+}
 .kh-portrait.is-concentrating {
   filter: drop-shadow(0 0 7px rgba(180, 140, 255, 0.85)) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.75));
 }
 .kh-conc-badge {
   position: absolute;
-  top: 18px;
-  right: 2px;
+  top: 22px;
+  right: 3px;
   width: 26px;
   height: 26px;
   border-radius: 4px;
@@ -99,8 +125,8 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
 /* Героическое вдохновение — звезда в левом верхнем углу портрета */
 .kh-inspiration {
   position: absolute;
-  top: 18px;
-  left: 2px;
+  top: 22px;
+  left: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -122,7 +148,7 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
   box-shadow: 0 0 0 1px #000, 0 0 10px rgba(180, 140, 255, 0.7);
 }
 .kh-name {
-  max-width: 140px;
+  max-width: 160px;
   margin-top: 2px;
   font-family: var(--kh-serif);
   font-weight: 700;
@@ -148,10 +174,11 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
 .kh-orb.is-khvor { filter: drop-shadow(0 0 14px rgba(150, 80, 255, 0.5)) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.75)); }
 .kh-orb-glass {
   position: absolute;
-  left: 16.6%;
-  top: 16.6%;
-  width: 66.8%;
-  height: 66.8%;
+  /* Стекло больше дыры в рамке (66.8%): внутреннюю часть рамки срезаем маской ниже, кольцо тоньше */
+  left: 11%;
+  top: 11%;
+  width: 78%;
+  height: 78%;
   border-radius: 50%;
   overflow: hidden;
   background: #050305;
@@ -170,6 +197,9 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
   position: absolute;
   inset: 0;
   background: url("../assets/orb-frame.png") center / contain no-repeat;
+  /* Внутренняя часть кольца прозрачная (до 78% радиуса), остаётся внешний обод и ромбы */
+  -webkit-mask: radial-gradient(circle closest-side, transparent 0 77%, #000 78%);
+  mask: radial-gradient(circle closest-side, transparent 0 77%, #000 78%);
   pointer-events: none;
 }
 .kh-orb-text {
@@ -331,7 +361,7 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
 }
 .kh-center {
   position: relative;
-  min-width: 470px; /* чтобы вкладки всегда помещались в одну строку */
+  min-width: 420px; /* чтобы вкладки всегда помещались в одну строку */
   pointer-events: auto;
   border-style: solid;
   border-width: 18px;
@@ -349,25 +379,25 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
 .kh-groups {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
-  padding: 4px 4px 0;
+  gap: 10px;
+  padding: 2px 2px 0;
 }
 .kh-group { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.kh-group + .kh-group { padding-left: 14px; border-left: 1px solid rgba(74, 72, 82, 0.6); }
-.kh-tiles { display: flex; gap: 4px; }
+.kh-group + .kh-group { padding-left: 10px; border-left: 1px solid rgba(74, 72, 82, 0.6); }
+.kh-tiles { display: flex; gap: 3px; }
 
 /* Плитка: рамка slot-frame, внутри картинка предмета, снизу короткая подпись */
 .kh-tile {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 60px;
+  width: 50px;
 }
 .kh-tile-slot {
   position: relative;
   display: block;
-  width: 56px;
-  height: 56px;
+  width: 45px;
+  height: 45px;
   background: url("../assets/slot-frame.png") center / 100% 100% no-repeat;
   isolation: isolate; /* чтобы картинка с z-index: -1 ушла под рамку, но не под панель */
 }
@@ -403,10 +433,10 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
   background: rgba(8, 7, 10, 0.88);
   box-shadow: 0 0 0 1px #000;
   font-family: var(--kh-sans); /* у Cormorant старинные цифры: «1/1» похоже на «ı/ı» */
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   font-variant-numeric: lining-nums tabular-nums;
-  line-height: 14px;
+  line-height: 12px;
   color: #ffc27a;
 }
 .kh-badge.is-recharge { color: var(--kh-violet); }
@@ -435,9 +465,9 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
-  width: 60px;
+  width: 50px;
   min-height: 2.4em;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.2;
   text-align: center;
   color: var(--kh-muted);
@@ -491,10 +521,10 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
 }
 .kh-tabs { display: flex; gap: 2px; }
 .kh-tab {
-  padding: 3px 9px;
+  padding: 2px 7px;
   border-radius: 3px;
   font-family: "Alegreya Sans SC", var(--kh-sans);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
