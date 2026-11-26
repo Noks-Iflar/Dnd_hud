@@ -156,5 +156,22 @@
       {{/each}}
     </div>
   </div>
+
+  {{!-- Правый блок: быстрые кнопки и «Завершить ход» --}}
+  <div class="kh-right">
+    <div class="kh-right-grid">
+      {{#each right.buttons}}
+      <button type="button" class="kh-right-btn" data-action="{{action}}" data-tooltip="{{hint}}" aria-label="{{label}}">
+        <img src="{{@root.assets}}/{{icon}}.png" alt="">
+        <span>{{label}}</span>
+      </button>
+      {{/each}}
+    </div>
+    {{#if right.endTurn.show}}
+    <button type="button" class="kh-end-turn {{#unless right.endTurn.active}}is-waiting{{/unless}}" data-action="endTurn" {{#unless right.endTurn.active}}disabled{{/unless}} data-tooltip="{{right.endTurn.hint}}">
+      <span>Завершить ход</span>
+    </button>
+    {{/if}}
+  </div>
 {{/if}}
 </div>

@@ -78,7 +78,7 @@ const TABS = [
 const TILE_WIDTH = 53;        // плитка 50 px + промежуток
 const HUD_LEFT = 12;          // отступ HUD от левого края (hud.css)
 const LEFT_BLOCK_WIDTH = 620; // портрет, сфера и левая панель
-const RIGHT_RESERVE = 220;    // будущий правый блок
+const RIGHT_RESERVE = 200;    // правый блок
 const PANEL_EXTRAS = 160;     // рамка панели, разделители групп, отступы
 const COLUMNS_MIN = 5;
 const COLUMNS_MAX = 12;
@@ -369,6 +369,69 @@ function movement_(actor, speed) {
   return { total, left, tracked: true, segments: Array.from({ length: count }, (_, i) => i < lit) };
 }
 
+/* ---------- Правый блок ---------- */
+
+/**
+ * Кнопки правого блока. У персонажа — инвентарь, лист, книга заклинаний (если есть заклинания), журнал;
+ * у NPC, которого видит ГМ, — добыча, статблок, цели, эффекты.
+ */
+function rightButtons(actor) {
+  if (game.user.isGM && actor.type === "npc") {
+    return [
+      { action: "makeLoot", label: "Добыча", icon: "icon-loot", hint: "Превратить токен в добычу (Item Piles)" },
+      { action: "openSheet", label: "Статблок", icon: "icon-statblock", hint: "Открыть статблок" },
+      { action: "clearTargets", label: "Цели", icon: "icon-targets", hint: targetsHint() },
+      { action: "openEffects", label: "Эффекты", icon: "icon-effects", hint: "Эффекты на существе" }
+    ];
+  }
+  const buttons = [
+    { action: "openInventory", label: "Инвентарь", icon: "icon-inventory", hint: "Инвентарь" },
+    { action: "openSheet", label: "Лист", icon: "icon-sheet", hint: "Лист персонажа" }
+  ];
+  if (actor.items.some((i) => i.type === "spell")) {
+    buttons.push({ action: "openSpells", label: "Книга закл.", icon: "icon-spellbook", hint: "Книга заклинаний" });
+  }
+  buttons.push({ action: "openJournal", label: "Журнал", icon: "icon-journal", hint: "Журнал" });
+  return buttons;
+}
+
+/** Подсказка кнопки «Цели»: кого сейчас выбрал целью этот пользователь. */
+function targetsHint() {
+  const names = [...game.user.targets].map((t) => t.name);
+  return names.length ? `Цели: ${names.join(", ")}. Клик — снять все` : "Целей нет";
+}
+
+/**
+ * «Завершить ход»: видна в начатом бою, если существо в нём участвует;
+ * нажать можно только в его ход.
+ */
+function endTurnState(actor) {
+  const combat = game.combat;
+  if (!combat?.started) return { show: false };
+  const mine = combat.combatants.filter((c) => c.actor?.id === actor.id || c.token?.actorId === actor.id);
+  if (!mine.length) return { show: false };
+  const active = mine.some((c) => c.id === combat.combatant?.id);
+  return { show: true, active, hint: active ? "Передать ход следующему" : "Сейчас не ваш ход" };
+}
+
+/**
+ * Открывает лист на нужной вкладке. Названия вкладок у листа dnd5e и Tidy 5e могут отличаться,
+ * поэтому пробуем по очереди; если ни одна не подошла — лист просто открыт.
+ */
+async function openSheetTab(actor, tabs) {
+  const sheet = actor?.sheet;
+  if (!sheet) return;
+  await sheet.render({ force: true });
+  for (const tab of tabs) {
+    try {
+      sheet.changeTab?.(tab, "primary");
+      return;
+    } catch {
+      // такой вкладки нет — пробуем следующую
+    }
+  }
+}
+
 /* ---------- Подсказка способности ---------- */
 
 /** Вид способности для второй строки подсказки. */
@@ -445,6 +508,13 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     // Кнопки в шаблоне с data-action="..." вызывают эти функции.
     actions: {
       openSheet: KhvorHud.#openSheet,
+      openInventory: KhvorHud.#openInventory,
+      openSpells: KhvorHud.#openSpells,
+      openEffects: KhvorHud.#openEffects,
+      openJournal: KhvorHud.#openJournal,
+      makeLoot: KhvorHud.#makeLoot,
+      clearTargets: KhvorHud.#clearTargets,
+      endTurn: KhvorHud.#endTurn,
       rollInitiative: KhvorHud.#rollInitiative,
       openSkills: KhvorHud.#openSkills,
       setRollMode: KhvorHud.#setRollMode,
@@ -546,6 +616,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
         failure: [0, 1, 2].map((i) => i < (attr.death?.failure ?? 0))
       } : null,
       panel: abilities,
+      right: { buttons: rightButtons(actor), endTurn: endTurnState(actor) },
       slots: spellSlots(actor)
     };
   }
@@ -652,6 +723,52 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   /* ---------- Действия кнопок ---------- */
+
+  static #openInventory() {
+    return openSheetTab(this.actor, ["inventory"]);
+  }
+
+  static #openSpells() {
+    return openSheetTab(this.actor, ["spells", "spellbook"]);
+  }
+
+  static #openEffects() {
+    return openSheetTab(this.actor, ["effects"]);
+  }
+
+  /** Журнал — вкладка «Журнал» на боковой панели Foundry. */
+  static #openJournal() {
+    if (ui.sidebar?.changeTab) ui.sidebar.changeTab("journal", "primary");
+    else ui.sidebar?.activateTab?.("journal");
+    ui.sidebar?.expand?.();
+  }
+
+  /** Добыча: токен превращается в кучу добычи модуля Item Piles (после подтверждения). */
+  static async #makeLoot() {
+    const api = game.itempiles?.API;
+    if (!api) return ui.notifications.warn("Модуль Item Piles не включён.");
+    const token = this.actor?.token?.object ?? this.actor?.getActiveTokens()?.[0];
+    if (!token) return;
+    const DialogV2 = foundry.applications.api.DialogV2;
+    const ok = await DialogV2.confirm({
+      window: { title: "Добыча" },
+      content: `<p>Превратить «${foundry.utils.escapeHTML?.(token.name) ?? token.name}» в добычу?</p>`
+    });
+    if (ok) await api.turnTokensIntoItemPiles([token]);
+  }
+
+  /** Снять все цели текущего пользователя. */
+  static #clearTargets() {
+    for (const t of [...game.user.targets]) t.setTarget(false, { releaseOthers: false });
+    this.render();
+  }
+
+  /** Передать ход следующему участнику боя. */
+  static async #endTurn() {
+    const combat = game.combat;
+    if (!combat?.started) return;
+    return combat.nextTurn();
+  }
 
   static #openSheet() {
     this.actor?.sheet?.render(true);
@@ -815,7 +932,7 @@ Hooks.once("ready", () => {
   // Перерисовка не чаще раза в 50 мс, даже если событий много подряд.
   const refresh = foundry.utils.debounce(() => hud.render({ force: true }), 50);
   const hooks = [
-    "canvasReady", "controlToken", "updateToken", "updateActor", "updateCombat", "deleteCombat",
+    "canvasReady", "controlToken", "updateToken", "updateActor", "updateCombat", "deleteCombat", "combatStart", "targetToken",
     "createItem", "updateItem", "deleteItem",
     "createActiveEffect", "updateActiveEffect", "deleteActiveEffect"
   ];
