@@ -107,6 +107,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       rollInitiative: KhvorHud.#rollInitiative,
       openSkills: KhvorHud.#openSkills,
       setRollMode: KhvorHud.#setRollMode,
+      useAbility: KhvorHud.#useAbility,
       shortRest: KhvorHud.#shortRest,
       longRest: KhvorHud.#longRest
     }
@@ -199,6 +200,29 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!actor) return;
     if (typeof actor.rollInitiativeDialog === "function") return actor.rollInitiativeDialog({ createCombatants: true });
     return actor.rollInitiative({ createCombatants: true });
+  }
+
+  /**
+   * Клик по плитке: используем активность так же, как кнопка на листе персонажа.
+   * Дальше всё делает dnd5e (окно расхода ячеек и зарядов, карточка в чате), а Midi-QOL
+   * подхватывает использование сам.
+   */
+  static async #useAbility(event, target) {
+    const actor = this.actor;
+    if (!actor) return;
+    if (!actor.isOwner) {
+      ui.notifications.warn("Это не ваш персонаж.");
+      return;
+    }
+    const { itemId, activityId } = target.dataset;
+    const item = actor.items.get(itemId);
+    const activity = item?.system.activities?.get(activityId);
+    if (!activity) {
+      // Предмет успели удалить, а HUD ещё не перерисовался.
+      ui.notifications.warn("Способность не найдена. Попробуйте ещё раз.");
+      return this.render();
+    }
+    return activity.use({ event });
   }
 
   static #openSkills() {

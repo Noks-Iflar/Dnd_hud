@@ -297,7 +297,14 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
   height: 75.4%;
   object-fit: cover;
   z-index: -1; /* картинка под рамкой */
+  transition: filter 0.15s;
 }
+/* Наведение: картинка ярче, рамка чуть подсвечена; нажатие — плитка «вдавливается» */
+.kh-tile-slot { transition: filter 0.15s, transform 0.1s; }
+.kh-tile:hover .kh-tile-img { filter: brightness(1.25); }
+.kh-tile:hover .kh-tile-slot { filter: drop-shadow(0 0 5px rgba(216, 50, 63, 0.55)); }
+.kh-tile:hover .kh-tile-name { color: var(--kh-text); }
+.kh-tile:active .kh-tile-slot { transform: scale(0.95); }
 /* Подпись переносится, но не больше двух строк; место под две строки есть всегда,
    чтобы подписи групп стояли на одной линии. */
 .kh-tile-name {

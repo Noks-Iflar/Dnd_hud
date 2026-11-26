@@ -84,12 +84,12 @@
       <div class="kh-group kh-group-{{key}}">
         <div class="kh-tiles">
           {{#each tiles}}
-          <div class="kh-tile" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" data-tooltip="{{name}}">
+          <button type="button" class="kh-tile" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" data-tooltip="{{name}}" aria-label="{{name}}">
             <span class="kh-tile-slot">
               <img class="kh-tile-img" src="{{img}}" alt="">
             </span>
             <span class="kh-tile-name">{{label}}</span>
-          </div>
+          </button>
           {{/each}}
         </div>
         <div class="kh-group-label">
