@@ -78,6 +78,8 @@
   {{!-- Способности: вкладки и страницы сверху, ниже группы по типу действия с подписью и ромбом --}}
   <div class="kh-center {{#if panel.tall}}is-tall{{/if}}">
     <img class="kh-crest" src="{{assets}}/panel-crest.png" alt="">
+    {{!-- Подсказка способности: заполняется скриптом при наведении на плитку --}}
+    <div class="kh-tip" role="tooltip" hidden></div>
 
     <div class="kh-bar">
       <div class="kh-tabs" role="tablist" aria-label="Фильтр способностей">
@@ -85,6 +87,17 @@
         <button type="button" class="kh-tab {{#if active}}active{{/if}}" role="tab" aria-selected="{{active}}" data-action="setTab" data-tab="{{id}}">{{label}}</button>
         {{/each}}
       </div>
+      {{#if slots.length}}
+      {{!-- Ячейки заклинаний: горит — есть, пустое гнездо — потрачено; договор отдельно --}}
+      <div class="kh-slots">
+        {{#each slots}}
+        <span class="kh-slot-row {{#if pact}}is-pact{{/if}}" data-tooltip="{{title}}">
+          <span class="kh-slot-label">{{label}}</span>
+          {{#each gems}}<img src="{{@root.assets}}/{{#if this}}{{#if ../pact}}gem-pact{{else}}gem-slot{{/if}}{{else}}gem-socket-empty{{/if}}.png" alt="">{{/each}}
+        </span>
+        {{/each}}
+      </div>
+      {{/if}}
       <div class="kh-pager">
         {{#if panel.multi}}
         <button type="button" class="kh-page-btn" data-action="prevPage" data-tooltip="Предыдущая страница" aria-label="Предыдущая страница" {{#unless panel.hasPrev}}disabled{{/unless}}>‹</button>
@@ -101,10 +114,10 @@
         <div class="kh-group-body">
           <div class="kh-tiles" style="--cols: {{cols}}">
             {{#each tiles}}
-            <button type="button" class="kh-tile {{#if spent}}is-spent{{/if}}" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" data-tooltip="{{name}}" aria-label="{{name}}{{#if badge}} ({{badge}}){{/if}}">
+            <button type="button" class="kh-tile {{#if spent}}is-spent{{/if}}" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" aria-label="{{name}}{{#if badge}} ({{badge}}){{/if}}">
               <span class="kh-tile-slot">
                 <img class="kh-tile-img" src="{{img}}" alt="">
-                {{#if badge}}<span class="kh-badge {{#if recharge}}is-recharge{{/if}}">{{badge}}</span>{{/if}}
+                {{#if badge}}<span class="kh-badge {{#if recharge}}is-recharge{{/if}} {{#if level}}is-level{{/if}} {{#if pact}}is-pact{{/if}}">{{badge}}</span>{{/if}}
                 {{#if quantity}}<span class="kh-badge">{{quantity}}</span>{{/if}}
                 {{#if cost}}<span class="kh-cost">{{#each cost}}<i></i>{{/each}}</span>{{/if}}
               </span>

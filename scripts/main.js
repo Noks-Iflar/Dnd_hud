@@ -34,8 +34,12 @@ const GROUPS = [
   { key: "bonus", label: "Бонусное", gem: "gem-bonus" },
   { key: "reaction", label: "Реакция", gem: "gem-reaction" },
   { key: "legendary", label: "Легендарные", gem: null },
+  { key: "special", label: "Особые", gem: null },
   { key: "items", label: "Предметы", gem: null }
 ];
+
+/** Круги заклинаний римскими цифрами, как на макете. */
+const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
 
 /**
  * Базовые действия из правил 2024 года, мини-сетка в группе «Действие».
@@ -149,6 +153,75 @@ function usesLeft(uses) {
 }
 
 /**
+ * В какую группу панели попадает активность; null — никуда.
+ * Расходники — в «Предметы», остальное — по типу активации.
+ * «Особое» (например, «Порыв к действию») показываем, только если у способности есть заряды:
+ * так в панель не попадают пассивки вроде «Ловкого маневрирования». Легендарное сопротивление
+ * NPC тоже «особое», но ему место в левом блоке (шаг 8 плана).
+ */
+function groupOf(item, activity) {
+  if (item.type === "consumable") return "items";
+  const type = activity.activation?.type;
+  if (type === "special") {
+    const legres = activity.consumption?.targets?.some((t) => t.target === "resources.legres.value");
+    return !legres && (usesLeft(item.system.uses) || usesLeft(activity.uses)) ? "special" : null;
+  }
+  if (type === "items") return null;
+  return GROUPS.some((g) => g.key === type) ? type : null;
+}
+
+/**
+ * Имя плитки (полное, для подсказки) и подпись (короткая, на плитке).
+ * - «forward» — бесплатное сотворение заклинания 1 раз в день: «Тьма (своб.)».
+ * - Если у предмета несколько активностей в одной группе («Хитроумное действие»: Рывок,
+ *   Отступление, Засада; «Заклинания» дракона), подписываем именем активности.
+ * - Иначе — имя предмета.
+ */
+function displayName(item, activity) {
+  const base = ruName(item.name);
+  if (activity.type === "forward") return { name: `${base} (свободное сотворение)`, label: `${tileName(base)} (своб.)` };
+  const group = groupOf(item, activity);
+  const siblings = [...item.system.activities].filter((a) => a.type !== "forward" && groupOf(item, a) === group).length;
+  const own = ruName(activity.name ?? "");
+  const name = own && siblings > 1 ? own : base;
+  return { name, label: tileName(name) };
+}
+
+/**
+ * Есть ли у актёра ячейка, чтобы сотворить заклинание круга level.
+ * Обычные заклинания можно творить и ячейкой договора, заклинания договора — только ею.
+ * Остаток ячеек — spells.spellN.value / spells.pact.value (так же их читает макрос снимка Dnd Hub).
+ */
+function hasSlot(actor, level, method) {
+  const spells = actor.system.spells ?? {};
+  const pact = spells.pact;
+  const pactOk = (pact?.value ?? 0) > 0 && (pact?.level ?? 0) >= level;
+  if (method === "pact") return pactOk;
+  for (let l = level; l <= 9; l++) if ((spells[`spell${l}`]?.value ?? 0) > 0) return true;
+  return pactOk;
+}
+
+/**
+ * Ячейки заклинаний над панелью: ряд ромбов на каждый круг, где есть ячейки, и отдельно договор.
+ * gems — массив true/false: горит или потрачена.
+ */
+function spellSlots(actor) {
+  const spells = actor.system.spells ?? {};
+  const gems = (value, max) => Array.from({ length: max }, (_, i) => i < (value ?? 0));
+  const rows = [];
+  for (let l = 1; l <= 9; l++) {
+    const max = Number(spells[`spell${l}`]?.max) || 0;
+    if (max > 0) rows.push({ label: ROMAN[l], title: `Ячейки ${l} круга`, gems: gems(spells[`spell${l}`].value, max) });
+  }
+  const pact = spells.pact;
+  const pactMax = Number(pact?.max) || 0;
+  if (pactMax > 0) {
+    rows.push({ label: "Договор", title: `Ячейки договора (${pact.level} круг)`, gems: gems(pact.value, pactMax), pact: true });
+  }
+  return rows;
+}
+
+/**
  * Значки и состояние плитки:
  * - заряды «2/3» (сначала у самой активности, как «Огненный шар» 1/день, потом у предмета);
  * - перезарядка «5–6» (recovery с period "recharge" и порогом в formula);
@@ -157,7 +230,13 @@ function usesLeft(uses) {
  * - spent — плитка бледнеет: заряды кончились или не хватает легендарных действий.
  */
 function tileState(actor, item, activity, groupKey) {
-  const uses = usesLeft(activity.uses) ?? usesLeft(item.system.uses);
+  // Заряды предмета у заклинания относятся только к бесплатному сотворению (активность их тратит),
+  // а обычное сотворение идёт ячейкой.
+  const consumesItem = activity.consumption?.targets?.some((t) => t.type === "itemUses");
+  const itemUses = item.type === "spell" && !consumesItem ? null : usesLeft(item.system.uses);
+  let uses = usesLeft(activity.uses) ?? itemUses;
+  // Одноразовый расходник (зелье, огонь): «1/1» ничего не говорит, важно только количество «×2».
+  if (item.type === "consumable" && uses?.max === 1 && !usesLeft(activity.uses)) uses = null;
   const recharge = item.system.uses?.recovery?.find((r) => r.period === "recharge");
   const state = { badge: null, cost: null, spent: false };
 
@@ -169,6 +248,15 @@ function tileState(actor, item, activity, groupKey) {
     state.badge = `${uses.value}/${uses.max}`;
   }
   if (uses && uses.value === 0) state.spent = true;
+
+  // Заклинание за ячейку: значок круга «III», плитка бледнеет, если подходящих ячеек не осталось.
+  const level = item.type === "spell" ? item.system.level ?? 0 : 0;
+  if (level > 0 && activity.type !== "forward" && !consumesItem && !uses) {
+    state.badge = ROMAN[level];
+    state.level = true;
+    state.pact = item.system.method === "pact";
+    if (!hasSlot(actor, level, item.system.method)) state.spent = true;
+  }
 
   if (item.type === "consumable" && (item.system.quantity ?? 1) > 1) state.quantity = `×${item.system.quantity}`;
 
@@ -201,28 +289,36 @@ function collectAbilities(actor) {
 
   const groups = Object.fromEntries(GROUPS.map((g) => [g.key, []]));
 
+  // Есть ли у актёра хоть какие-то ячейки. Если нет (плут, воин), обычное сотворение заклинания
+  // бесполезно — оставляем только бесплатное («своб.»), как «Скороход» Муарена.
+  const spells = actor.system.spells ?? {};
+  const anySlots = Object.values(spells).some((sl) => (Number(sl?.max) || 0) > 0);
+
   for (const item of items) {
     if (item.getFlag("dnd5e", "cachedFor")) continue;
-    // Заклинания игроков добавим, когда будет выгрузка листа игрока: нужно понять, как хранится подготовка.
-    if (item.type === "spell") continue;
-    // Оружие и снаряжение — только надетое.
+    // Заклинания — только подготовленные: prepared 1 — подготовлено, 2 — всегда, 0 — нет.
+    if (item.type === "spell" && !(item.system.prepared >= 1)) continue;
+    // Оружие и снаряжение — только надетое; инструменты в бою не нужны.
     if (["weapon", "equipment"].includes(item.type) && !item.system.equipped) continue;
+    if (item.type === "tool") continue;
 
     const activities = item.system.activities;
     if (!activities?.size) continue; // пассивные черты без действий
 
     // Коллекция Foundry при for...of отдаёт значения, а не пары.
     for (const activity of activities) {
-      const groupKey = item.type === "consumable" ? "items" : activity.activation?.type;
-      if (!groups[groupKey]) continue; // «особое», «минута», «час» и т. п. в панель не попадают
+      const groupKey = groupOf(item, activity);
+      if (!groupKey) continue; // «минута», «час», без активации и т. п. в панель не попадают
+      const needsSlot = item.type === "spell" && (item.system.level ?? 0) > 0 && activity.type !== "forward"
+        && !activity.consumption?.targets?.some((t) => t.type === "itemUses");
+      if (needsSlot && !anySlots && !usesLeft(activity.uses)) continue;
 
       const spell = activity.type === "cast" ? cachedSpells.get(`.Item.${item.id}.Activity.${activity.id}`) : null;
       const img = spell?.img ?? (isGenericIcon(activity.img) ? item.img : activity.img);
-      // Имя активности нужно, только если у предмета их несколько (заклинания дракона).
-      const name = ruName(activities.size > 1 && activity.name ? activity.name : item.name);
+      const { name, label } = displayName(item, activity);
 
       groups[groupKey].push({
-        itemId: item.id, activityId: activity.id, name, label: tileName(name), img,
+        itemId: item.id, activityId: activity.id, name, label, img,
         category: tileCategory(item, activity),
         ...tileState(actor, item, activity, groupKey)
       });
@@ -232,6 +328,72 @@ function collectAbilities(actor) {
   return GROUPS
     .map((g) => ({ ...g, tiles: groups[g.key] }))
     .filter((g) => g.tiles.length > 0);
+}
+
+/* ---------- Подсказка способности ---------- */
+
+/** Вид способности для второй строки подсказки. */
+function abilityKind(item, spell) {
+  const asSpell = spell ?? (item.type === "spell" ? item : null);
+  if (asSpell) return asSpell.system.level ? `${asSpell.system.level} круг` : "Заговор";
+  return { weapon: "Оружие", feat: "Умение", consumable: "Расходник", equipment: "Снаряжение", tool: "Инструмент" }[item.type] ?? "";
+}
+
+/** Название характеристики по-русски из конфигурации dnd5e (её переводит модуль локализации). */
+const abilityLabel = (key) => CONFIG.DND5E?.abilities?.[key]?.label ?? key;
+const damageLabel = (key) => (CONFIG.DND5E?.damageTypes?.[key]?.label ?? key ?? "").toLowerCase();
+
+/**
+ * Данные компактной подсказки: имя, «вид · тип действия · дальность» и строка с атакой,
+ * испытанием и уроном. Для активности «cast» берём сотворяемое заклинание: у него свои
+ * атака, урон и описание.
+ * Подписи dnd5e (labels.toHit «+8», labels.damages [{ formula, damageType }], labels.range) —
+ * те же, что приложение Dnd Hub читает из снимков.
+ */
+function abilityTip(actor, itemId, activityId) {
+  const item = actor.items.get(itemId);
+  const activity = item?.system.activities?.get(activityId);
+  if (!activity) return null;
+
+  const spell = activity.type === "cast"
+    ? actor.items.find((i) => i.getFlag("dnd5e", "cachedFor") === `.Item.${item.id}.Activity.${activity.id}`)
+    : null;
+  // Атака и урон — у активности самого заклинания, если оно есть; у «forward» — у той активности,
+  // которую он запускает (activity.activity.id).
+  const forwarded = activity.type === "forward" ? item.system.activities.get(activity.activity?.id) : null;
+  const act = (spell && [...(spell.system.activities ?? [])][0]) || forwarded || activity;
+  const labels = act.labels ?? {};
+
+  const group = GROUPS.find((g) => g.key === groupOf(item, activity));
+  const sub = [abilityKind(item, spell), group?.label, labels.range].filter(Boolean).join(" · ");
+
+  const stats = [];
+  if (labels.toHit) stats.push({ label: "Атака", value: labels.toHit });
+  const dc = act.save?.dc?.value;
+  if (dc) {
+    const ability = [...(act.save.ability ?? [])][0];
+    stats.push({ label: ability ? `Испытание ${abilityLabel(ability)}` : "Испытание", value: `СЛ ${dc}` });
+  }
+  const damages = (labels.damages ?? []).filter((d) => d.formula);
+  if (damages.length) {
+    stats.push({ label: "Урон", value: damages.map((d) => `${d.formula} ${damageLabel(d.damageType)}`.trim()).join(" + ") });
+  }
+
+  return {
+    name: displayName(item, activity).name,
+    sub,
+    stats,
+    // Описание берём у заклинания, если это «cast», иначе у самого предмета.
+    source: spell ?? item
+  };
+}
+
+/** Описание предмета в HTML Foundry: [[lookup @name]], ссылки и броски превращаются в текст. */
+async function enrichedDescription(item) {
+  const html = item.system.description?.value ?? "";
+  if (!html) return "<p><em>Описания нет.</em></p>";
+  const TextEditor = foundry.applications?.ux?.TextEditor?.implementation ?? globalThis.TextEditor;
+  return TextEditor.enrichHTML(html, { rollData: item.getRollData?.(), relativeTo: item, secrets: item.isOwner });
 }
 
 class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
@@ -328,7 +490,8 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
         { id: "disadvantage", label: "Помеха", cls: "dis" }
       ].map((m) => ({ ...m, active: m.id === rollMode })),
       canRest: actor.type === "character",
-      panel: abilities
+      panel: abilities,
+      slots: spellSlots(actor)
     };
   }
 
@@ -345,6 +508,92 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     this._lastMissing = context.hp?.missing;
     this._lastActorId = this.actor?.id;
+
+    this.#bindTooltips();
+  }
+
+  /* ---------- Подсказка при наведении ---------- */
+
+  /** Плитка, над которой сейчас мышь, и показано ли полное описание (зажат Shift). */
+  #tip = { tile: null, full: false };
+
+  /** Навешивает подсказку на плитки; Shift слушаем один раз на всё окно. */
+  #bindTooltips() {
+    // После перерисовки старых плиток уже нет в DOM — забываем их.
+    this.#tip = { tile: null, full: false };
+    for (const tile of this.element.querySelectorAll(".kh-tile")) {
+      tile.addEventListener("mouseenter", () => this.#showTip(tile));
+      tile.addEventListener("mouseleave", () => this.#hideTip());
+      tile.addEventListener("focus", () => this.#showTip(tile));
+      tile.addEventListener("blur", () => this.#hideTip());
+    }
+    if (this._shiftBound) return;
+    this._shiftBound = true;
+    const onKey = (event) => {
+      if (event.key !== "Shift" || !this.#tip.tile) return;
+      const full = event.type === "keydown";
+      if (full !== this.#tip.full) this.#showTip(this.#tip.tile, full);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+  }
+
+  async #showTip(tile, full = false) {
+    const box = this.element.querySelector(".kh-tip");
+    const data = this.actor && abilityTip(this.actor, tile.dataset.itemId, tile.dataset.activityId);
+    if (!box || !data) return;
+    this.#tip = { tile, full };
+
+    box.replaceChildren();
+    const add = (tag, cls, text) => {
+      const el = document.createElement(tag);
+      if (cls) el.className = cls;
+      if (text !== undefined) el.textContent = text;
+      return el;
+    };
+    box.append(add("div", "kh-tip-name", data.name));
+    if (data.sub) box.append(add("div", "kh-tip-sub", data.sub));
+    if (data.stats.length) {
+      const row = add("div", "kh-tip-stats");
+      for (const st of data.stats) {
+        const cell = add("span", "kh-tip-stat");
+        cell.append(add("span", "kh-tip-stat-label", `${st.label} `), add("b", "", st.value));
+        row.append(cell);
+      }
+      box.append(row);
+    }
+    const body = add("div", "kh-tip-desc");
+    box.append(body);
+    if (!full) box.append(add("div", "kh-tip-hint", "Зажмите Shift — полное описание"));
+
+    box.classList.toggle("is-full", full);
+    this.#placeTip(box, tile);
+    box.hidden = false;
+
+    if (full) {
+      // Описание собирается асинхронно; если мышь уже ушла на другую плитку, ничего не делаем.
+      const html = await enrichedDescription(data.source);
+      if (this.#tip.tile !== tile || !this.#tip.full) return;
+      body.innerHTML = html;
+      this.#placeTip(box, tile);
+    }
+  }
+
+  /** Подсказка над плиткой, над панелью; не вылезает за края центрального блока. */
+  #placeTip(box, tile) {
+    const center = this.element.querySelector(".kh-center");
+    if (!center) return;
+    const c = center.getBoundingClientRect();
+    const t = tile.getBoundingClientRect();
+    const half = box.offsetWidth / 2;
+    const x = Math.clamp(t.left - c.left + t.width / 2, half - 40, c.width - half + 40);
+    box.style.left = `${x}px`;
+  }
+
+  #hideTip() {
+    this.#tip = { tile: null, full: false };
+    const box = this.element.querySelector(".kh-tip");
+    if (box) box.hidden = true;
   }
 
   /* ---------- Действия кнопок ---------- */
