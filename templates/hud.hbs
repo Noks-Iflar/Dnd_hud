@@ -78,6 +78,8 @@
   {{!-- Способности: вкладки и страницы сверху, ниже группы по типу действия с подписью и ромбом --}}
   <div class="kh-center {{#if panel.tall}}is-tall{{/if}}">
     <img class="kh-crest" src="{{assets}}/panel-crest.png" alt="">
+    {{!-- Подсказка способности: заполняется скриптом при наведении на плитку --}}
+    <div class="kh-tip" role="tooltip" hidden></div>
 
     <div class="kh-bar">
       <div class="kh-tabs" role="tablist" aria-label="Фильтр способностей">
@@ -101,7 +103,7 @@
         <div class="kh-group-body">
           <div class="kh-tiles" style="--cols: {{cols}}">
             {{#each tiles}}
-            <button type="button" class="kh-tile {{#if spent}}is-spent{{/if}}" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" data-tooltip="{{name}}" aria-label="{{name}}{{#if badge}} ({{badge}}){{/if}}">
+            <button type="button" class="kh-tile {{#if spent}}is-spent{{/if}}" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" aria-label="{{name}}{{#if badge}} ({{badge}}){{/if}}">
               <span class="kh-tile-slot">
                 <img class="kh-tile-img" src="{{img}}" alt="">
                 {{#if badge}}<span class="kh-badge {{#if recharge}}is-recharge{{/if}}">{{badge}}</span>{{/if}}

@@ -234,6 +234,69 @@ function collectAbilities(actor) {
     .filter((g) => g.tiles.length > 0);
 }
 
+/* ---------- Подсказка способности ---------- */
+
+/** Вид способности для второй строки подсказки. */
+function abilityKind(item, spell) {
+  if (spell) return spell.system.level ? `${spell.system.level} круг` : "Заговор";
+  return { weapon: "Оружие", feat: "Умение", consumable: "Расходник", equipment: "Снаряжение", tool: "Инструмент" }[item.type] ?? "";
+}
+
+/** Название характеристики по-русски из конфигурации dnd5e (её переводит модуль локализации). */
+const abilityLabel = (key) => CONFIG.DND5E?.abilities?.[key]?.label ?? key;
+const damageLabel = (key) => (CONFIG.DND5E?.damageTypes?.[key]?.label ?? key ?? "").toLowerCase();
+
+/**
+ * Данные компактной подсказки: имя, «вид · тип действия · дальность» и строка с атакой,
+ * испытанием и уроном. Для активности «cast» берём сотворяемое заклинание: у него свои
+ * атака, урон и описание.
+ * Подписи dnd5e (labels.toHit «+8», labels.damages [{ formula, damageType }], labels.range) —
+ * те же, что приложение Dnd Hub читает из снимков.
+ */
+function abilityTip(actor, itemId, activityId) {
+  const item = actor.items.get(itemId);
+  const activity = item?.system.activities?.get(activityId);
+  if (!activity) return null;
+
+  const spell = activity.type === "cast"
+    ? actor.items.find((i) => i.getFlag("dnd5e", "cachedFor") === `.Item.${item.id}.Activity.${activity.id}`)
+    : null;
+  // Атака и урон — у активности самого заклинания, если оно есть.
+  const act = (spell && [...(spell.system.activities ?? [])][0]) || activity;
+  const labels = act.labels ?? {};
+
+  const group = GROUPS.find((g) => g.key === activity.activation?.type);
+  const sub = [abilityKind(item, spell), group?.label, labels.range].filter(Boolean).join(" · ");
+
+  const stats = [];
+  if (labels.toHit) stats.push({ label: "Атака", value: labels.toHit });
+  const dc = act.save?.dc?.value;
+  if (dc) {
+    const ability = [...(act.save.ability ?? [])][0];
+    stats.push({ label: ability ? `Испытание ${abilityLabel(ability)}` : "Испытание", value: `СЛ ${dc}` });
+  }
+  const damages = (labels.damages ?? []).filter((d) => d.formula);
+  if (damages.length) {
+    stats.push({ label: "Урон", value: damages.map((d) => `${d.formula} ${damageLabel(d.damageType)}`.trim()).join(" + ") });
+  }
+
+  return {
+    name: ruName(activity.name && item.system.activities.size > 1 ? activity.name : item.name),
+    sub,
+    stats,
+    // Описание берём у заклинания, если это «cast», иначе у самого предмета.
+    source: spell ?? item
+  };
+}
+
+/** Описание предмета в HTML Foundry: [[lookup @name]], ссылки и броски превращаются в текст. */
+async function enrichedDescription(item) {
+  const html = item.system.description?.value ?? "";
+  if (!html) return "<p><em>Описания нет.</em></p>";
+  const TextEditor = foundry.applications?.ux?.TextEditor?.implementation ?? globalThis.TextEditor;
+  return TextEditor.enrichHTML(html, { rollData: item.getRollData?.(), relativeTo: item, secrets: item.isOwner });
+}
+
 class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS = {
     id: "khvor-hud",
@@ -345,6 +408,92 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     this._lastMissing = context.hp?.missing;
     this._lastActorId = this.actor?.id;
+
+    this.#bindTooltips();
+  }
+
+  /* ---------- Подсказка при наведении ---------- */
+
+  /** Плитка, над которой сейчас мышь, и показано ли полное описание (зажат Shift). */
+  #tip = { tile: null, full: false };
+
+  /** Навешивает подсказку на плитки; Shift слушаем один раз на всё окно. */
+  #bindTooltips() {
+    // После перерисовки старых плиток уже нет в DOM — забываем их.
+    this.#tip = { tile: null, full: false };
+    for (const tile of this.element.querySelectorAll(".kh-tile")) {
+      tile.addEventListener("mouseenter", () => this.#showTip(tile));
+      tile.addEventListener("mouseleave", () => this.#hideTip());
+      tile.addEventListener("focus", () => this.#showTip(tile));
+      tile.addEventListener("blur", () => this.#hideTip());
+    }
+    if (this._shiftBound) return;
+    this._shiftBound = true;
+    const onKey = (event) => {
+      if (event.key !== "Shift" || !this.#tip.tile) return;
+      const full = event.type === "keydown";
+      if (full !== this.#tip.full) this.#showTip(this.#tip.tile, full);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+  }
+
+  async #showTip(tile, full = false) {
+    const box = this.element.querySelector(".kh-tip");
+    const data = this.actor && abilityTip(this.actor, tile.dataset.itemId, tile.dataset.activityId);
+    if (!box || !data) return;
+    this.#tip = { tile, full };
+
+    box.replaceChildren();
+    const add = (tag, cls, text) => {
+      const el = document.createElement(tag);
+      if (cls) el.className = cls;
+      if (text !== undefined) el.textContent = text;
+      return el;
+    };
+    box.append(add("div", "kh-tip-name", data.name));
+    if (data.sub) box.append(add("div", "kh-tip-sub", data.sub));
+    if (data.stats.length) {
+      const row = add("div", "kh-tip-stats");
+      for (const st of data.stats) {
+        const cell = add("span", "kh-tip-stat");
+        cell.append(add("span", "kh-tip-stat-label", `${st.label} `), add("b", "", st.value));
+        row.append(cell);
+      }
+      box.append(row);
+    }
+    const body = add("div", "kh-tip-desc");
+    box.append(body);
+    if (!full) box.append(add("div", "kh-tip-hint", "Зажмите Shift — полное описание"));
+
+    box.classList.toggle("is-full", full);
+    this.#placeTip(box, tile);
+    box.hidden = false;
+
+    if (full) {
+      // Описание собирается асинхронно; если мышь уже ушла на другую плитку, ничего не делаем.
+      const html = await enrichedDescription(data.source);
+      if (this.#tip.tile !== tile || !this.#tip.full) return;
+      body.innerHTML = html;
+      this.#placeTip(box, tile);
+    }
+  }
+
+  /** Подсказка над плиткой, над панелью; не вылезает за края центрального блока. */
+  #placeTip(box, tile) {
+    const center = this.element.querySelector(".kh-center");
+    if (!center) return;
+    const c = center.getBoundingClientRect();
+    const t = tile.getBoundingClientRect();
+    const half = box.offsetWidth / 2;
+    const x = Math.clamp(t.left - c.left + t.width / 2, half - 40, c.width - half + 40);
+    box.style.left = `${x}px`;
+  }
+
+  #hideTip() {
+    this.#tip = { tile: null, full: false };
+    const box = this.element.querySelector(".kh-tip");
+    if (box) box.hidden = true;
   }
 
   /* ---------- Действия кнопок ---------- */

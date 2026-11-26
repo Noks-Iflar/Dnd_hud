@@ -463,3 +463,39 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
 }
 
 .kh-empty { padding: 16px 24px; font-size: 12px; color: var(--kh-muted); }
+
+/* ---------- Подсказка способности ---------- */
+.kh-tip {
+  position: absolute;
+  bottom: calc(100% + 26px); /* над панелью и гребнем */
+  transform: translateX(-50%);
+  z-index: 5;
+  width: max-content;
+  min-width: 220px;
+  max-width: 340px;
+  padding: 10px 14px 9px;
+  border: 1px solid #5a5866;
+  border-radius: 4px;
+  background: linear-gradient(#18171c, #0c0b0e);
+  box-shadow: 0 0 0 1px #000, 0 10px 24px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.kh-tip[hidden] { display: none; }
+.kh-tip.is-full { max-width: 460px; }
+.kh-tip-name { font-family: var(--kh-serif); font-weight: 700; font-size: 20px; line-height: 1.1; }
+.kh-tip-sub { margin-top: 2px; font-size: 12px; color: var(--kh-muted); }
+.kh-tip-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; }
+.kh-tip-stat-label { color: var(--kh-muted); }
+.kh-tip-stat b { font-variant-numeric: lining-nums; }
+.kh-tip-desc:empty { display: none; }
+.kh-tip-desc {
+  max-height: 40vh;
+  overflow: hidden;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(74, 72, 82, 0.6);
+}
+.kh-tip-desc p { margin: 0 0 6px; }
+.kh-tip-hint { margin-top: 8px; font-size: 11px; color: #7d7888; }
