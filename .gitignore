@@ -1,0 +1,7 @@
+# Private data: never commit (public repo)
+fixtures/
+.env
+.env.*
+
+# Python cache from tools/
+__pycache__/

@@ -1,0 +1,18 @@
+{
+  "panel-frame": {
+    "size": [
+      1536,
+      417
+    ],
+    "slice": 64,
+    "note": "9-slice: border-image-slice 64 fill"
+  },
+  "panel-crest": {
+    "size": [
+      138,
+      98
+    ],
+    "offsetTop": -45,
+    "note": "по центру панели по горизонтали; offsetTop — от верхнего края panel-frame"
+  }
+}
