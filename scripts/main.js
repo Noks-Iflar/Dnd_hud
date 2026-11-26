@@ -37,6 +37,37 @@ const GROUPS = [
   { key: "items", label: "Предметы", gem: null }
 ];
 
+/**
+ * Базовые действия из правил 2024 года, мини-сетка в группе «Действие».
+ * status — id состояния Foundry, которое включается кнопкой, если такое состояние есть в мире.
+ * skill — навык, проверка которого бросается сразу.
+ */
+const BASIC_ACTIONS = [
+  { id: "dash", label: "Рывок", icon: "icon-dash",
+    rule: "До конца хода скорость увеличивается на значение текущей скорости." },
+  { id: "disengage", label: "Отход", icon: "icon-disengage",
+    rule: "До конца хода перемещение не провоцирует атаки." },
+  { id: "dodge", label: "Уклонение", icon: "icon-dodge", status: "dodging",
+    rule: "До начала следующего хода атаки по вам с помехой, спасброски Ловкости с преимуществом. Пропадает, если вы недееспособны или ваша скорость 0." },
+  { id: "help", label: "Помощь", icon: "icon-help",
+    rule: "Помощь союзнику в проверке характеристики или атаке по существу рядом с вами: следующий такой бросок союзника — с преимуществом." },
+  { id: "hide", label: "Засада", icon: "icon-hide", skill: "ste",
+    rule: "Проверка Ловкости (Скрытность) СЛ 15, нужно быть вне поля зрения врагов. При успехе вы невидимы, пока не выдадите себя." },
+  { id: "ready", label: "Подготовка", icon: "icon-ready",
+    rule: "Выберите действие и условие. Когда условие наступит до вашего следующего хода, выполните действие реакцией." }
+];
+
+/** Мини-сетка базовых действий встаёт в группу «Действие»; если её нет, группа создаётся. */
+function withBasicActions(groups) {
+  let action = groups.find((g) => g.key === "action");
+  if (!action) {
+    action = { ...GROUPS[0], tiles: [] };
+    groups.unshift(action);
+  }
+  action.basic = BASIC_ACTIONS;
+  return groups;
+}
+
 /** «Раздирание [Rend]» → «Раздирание»: английское название в квадратных скобках не нужно. */
 const ruName = (name) => (name ?? "").replace(/\s*\[[^\]]*\]\s*$/, "").trim();
 
@@ -156,6 +187,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       openSkills: KhvorHud.#openSkills,
       setRollMode: KhvorHud.#setRollMode,
       useAbility: KhvorHud.#useAbility,
+      basicAction: KhvorHud.#basicAction,
       shortRest: KhvorHud.#shortRest,
       longRest: KhvorHud.#longRest
     }
@@ -218,7 +250,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
         { id: "disadvantage", label: "Помеха", cls: "dis" }
       ].map((m) => ({ ...m, active: m.id === rollMode })),
       canRest: actor.type === "character",
-      groups: collectAbilities(actor)
+      groups: withBasicActions(collectAbilities(actor))
     };
   }
 
@@ -271,6 +303,31 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       return this.render();
     }
     return activity.use({ event });
+  }
+
+  /**
+   * Базовое действие: карточка в чат с кратким правилом.
+   * Засада — ещё и проверка Скрытности. Если в Foundry есть подходящее состояние
+   * (например, «уклонение»), оно включается или выключается на актёре.
+   */
+  static async #basicAction(event, target) {
+    const actor = this.actor;
+    const basic = BASIC_ACTIONS.find((b) => b.id === target.dataset.basic);
+    if (!actor || !basic) return;
+    if (!actor.isOwner) {
+      ui.notifications.warn("Это не ваш персонаж.");
+      return;
+    }
+
+    await ChatMessage.create({
+      speaker: ChatMessage.getSpeaker({ actor }),
+      content: `<div class="kh-chat-basic"><h3>${basic.label}</h3><p>${basic.rule}</p></div>`
+    });
+
+    const status = basic.status && CONFIG.statusEffects.find((s) => s.id === basic.status);
+    if (status) await actor.toggleStatusEffect(status.id);
+
+    if (basic.skill) await actor.rollSkill({ skill: basic.skill, event });
   }
 
   static #openSkills() {

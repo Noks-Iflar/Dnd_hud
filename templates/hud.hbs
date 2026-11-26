@@ -94,6 +94,16 @@
             <span class="kh-tile-name">{{label}}</span>
           </button>
           {{/each}}
+          {{#if basic}}
+          {{!-- Базовые действия: мини-сетка 3 × 2 после способностей группы «Действие» --}}
+          <div class="kh-basic" role="group" aria-label="Базовые действия">
+            {{#each basic}}
+            <button type="button" class="kh-basic-btn" data-action="basicAction" data-basic="{{id}}" data-tooltip="{{label}}" aria-label="{{label}}">
+              <img src="{{@root.assets}}/{{icon}}.png" alt="">
+            </button>
+            {{/each}}
+          </div>
+          {{/if}}
         </div>
         <div class="kh-group-label">
           {{#if gem}}<img src="{{@root.assets}}/{{gem}}.png" alt="">{{/if}}
