@@ -70,8 +70,30 @@ const TABS = [
   { id: "items", label: "Предметы" }
 ];
 
-/** Сколько столбцов плиток помещается на одной странице панели (одна плитка ≈ 64 px). */
-const PAGE_COLUMNS = 12;
+/**
+ * Сколько столбцов плиток помещается на странице панели. Считаем от свободной ширины:
+ * от левого края окна до боковой панели Foundry (чат и вкладки), минус левый блок HUD
+ * и запас под будущий правый блок (инвентарь, лист, «Завершить ход»).
+ */
+const TILE_WIDTH = 53;        // плитка 50 px + промежуток
+const HUD_LEFT = 12;          // отступ HUD от левого края (hud.css)
+const LEFT_BLOCK_WIDTH = 620; // портрет, сфера и левая панель
+const RIGHT_RESERVE = 220;    // будущий правый блок
+const PANEL_EXTRAS = 160;     // рамка панели, разделители групп, отступы
+const COLUMNS_MIN = 5;
+const COLUMNS_MAX = 12;
+
+/** Правая граница свободной области: левый край боковой панели Foundry (или край окна). */
+function freeAreaRight() {
+  const sidebar = document.getElementById("sidebar");
+  const left = sidebar?.getBoundingClientRect().left;
+  return left > 0 ? left : window.innerWidth;
+}
+
+function pageColumns() {
+  const free = freeAreaRight() - HUD_LEFT - LEFT_BLOCK_WIDTH - RIGHT_RESERVE - PANEL_EXTRAS;
+  return Math.clamp(Math.floor(free / TILE_WIDTH), COLUMNS_MIN, COLUMNS_MAX);
+}
 
 /** К какой вкладке относится плитка. */
 function tileCategory(item, activity) {
@@ -83,16 +105,16 @@ function tileCategory(item, activity) {
 
 /**
  * Готовит панель к показу: оставляет плитки выбранной вкладки и режет их на страницы.
- * На странице rows × PAGE_COLUMNS плиток; группы, которые не попали на страницу, скрываются.
+ * На странице rows × columns плиток (columns — от ширины экрана, см. pageColumns()); группы, которые не попали на страницу, скрываются.
  * Возвращает группы страницы, вкладки и номер страницы.
  */
-function paginate(groups, { tab, page, rows }) {
+function paginate(groups, { tab, page, rows, columns = COLUMNS_MAX }) {
   const tabs = TABS.filter((t) => t.id === "all" || groups.some((g) => g.tiles.some((x) => x.category === t.id)));
   if (!tabs.some((t) => t.id === tab)) tab = "all";
 
   // Все плитки вкладки подряд, каждая помнит свою группу.
   const flat = groups.flatMap((g) => g.tiles.filter((x) => tab === "all" || x.category === tab).map((x) => [g, x]));
-  const perPage = rows * PAGE_COLUMNS;
+  const perPage = rows * columns;
   const pages = Math.max(1, Math.ceil(flat.length / perPage));
   page = Math.clamp(page, 0, pages - 1);
 
@@ -101,11 +123,9 @@ function paginate(groups, { tab, page, rows }) {
     if (!shown.has(g.key)) shown.set(g.key, { ...g, tiles: [] });
     shown.get(g.key).tiles.push(x);
   }
-  let pageGroups = [...shown.values()];
+  const pageGroups = [...shown.values()];
   // В режиме двух строк у группы половина столбцов: плитки идут слева направо, потом вторая строка.
   for (const g of pageGroups) g.cols = Math.max(1, Math.ceil(g.tiles.length / rows));
-  // Базовые действия — на первой странице вкладки «Все».
-  if (tab === "all" && page === 0) pageGroups = withBasicActions(pageGroups);
 
   return {
     groups: pageGroups,
@@ -119,17 +139,6 @@ function paginate(groups, { tab, page, rows }) {
     hasNext: page < pages - 1,
     tall: rows === 2
   };
-}
-
-/** Мини-сетка базовых действий встаёт в группу «Действие»; если её нет, группа создаётся. */
-function withBasicActions(groups) {
-  let action = groups.find((g) => g.key === "action");
-  if (!action) {
-    action = { ...GROUPS[0], tiles: [] };
-    groups.unshift(action);
-  }
-  action.basic = BASIC_ACTIONS;
-  return groups;
 }
 
 /** «Раздирание [Rend]» → «Раздирание»: английское название в квадратных скобках не нужно. */
@@ -330,6 +339,36 @@ function collectAbilities(actor) {
     .filter((g) => g.tiles.length > 0);
 }
 
+/* ---------- Полоска движения (как в BG3) ---------- */
+
+/** Сколько всего делений в полоске: одно деление — 5 фт, но не больше 12 (у летунов 80 фт). */
+const MOVE_SEGMENTS_MAX = 12;
+
+/**
+ * Остаток движения в этот ход. Считаем только в начатом бою и только для токена-участника:
+ * пройденное — длина пути из истории перемещений токена (TokenDocument#movementHistory, V13+),
+ * измеренная по сетке сцены. Вне боя полоска полная.
+ * tracked = false — истории нет или не в бою, показываем просто скорость.
+ */
+function movement_(actor, speed) {
+  const total = Number(speed) || 0;
+  const full = (n) => Array.from({ length: n }, () => true);
+  const count = Math.min(MOVE_SEGMENTS_MAX, Math.max(1, Math.round(total / 5)));
+  const result = { total, left: total, tracked: false, segments: full(count) };
+
+  const token = actor.token ?? actor.getActiveTokens?.(false, true)?.[0];
+  const combat = game.combat;
+  const inCombat = combat?.started && token && combat.combatants.some((c) => c.tokenId === token.id);
+  const history = token?.movementHistory;
+  if (!inCombat || !Array.isArray(history)) return result;
+
+  let used = 0;
+  if (history.length > 1) used = canvas.grid.measurePath(history).distance ?? 0;
+  const left = Math.max(0, Math.round(total - used));
+  const lit = total > 0 ? Math.round((left / total) * count) : 0;
+  return { total, left, tracked: true, segments: Array.from({ length: count }, (_, i) => i < lit) };
+}
+
 /* ---------- Подсказка способности ---------- */
 
 /** Вид способности для второй строки подсказки. */
@@ -411,6 +450,8 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       setRollMode: KhvorHud.#setRollMode,
       useAbility: KhvorHud.#useAbility,
       basicAction: KhvorHud.#basicAction,
+      toggleInspiration: KhvorHud.#toggleInspiration,
+      rollDeathSave: KhvorHud.#rollDeathSave,
       setTab: KhvorHud.#setTab,
       prevPage: KhvorHud.#prevPage,
       nextPage: KhvorHud.#nextPage,
@@ -444,7 +485,8 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     const abilities = paginate(collectAbilities(actor), {
       tab: this.panel.tab,
       page: this.panel.page,
-      rows: game.settings.get(MODULE_ID, "tallPanel") ? 2 : 1
+      rows: game.settings.get(MODULE_ID, "tallPanel") ? 2 : 1,
+      columns: pageColumns()
     });
     // Запоминаем то, что реально показали: вкладка могла исчезнуть, страниц могло стать меньше.
     this.panel.tab = abilities.tab;
@@ -482,14 +524,27 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       units: UNITS[movement.units] ?? movement.units ?? "",
       // У заклинателей — СЛ заклинаний, у остальных — пассивная внимательность.
       extra: spellDC
-        ? { value: spellDC, label: "СЛ заклинаний" }
-        : { value: sys.skills?.prc?.passive ?? "—", label: "Пасс. внимат." },
+        ? { value: spellDC, label: "СЛ заклинаний", short: "СЛ закл." }
+        : { value: sys.skills?.prc?.passive ?? "—", label: "Пассивная внимательность", short: "пасс. вним." },
+      move: movement_(actor, movement.walk ?? 0),
       modes: [
         { id: "advantage", label: "Преим.", cls: "adv" },
         { id: "normal", label: "Обычн.", cls: "" },
         { id: "disadvantage", label: "Помеха", cls: "dis" }
       ].map((m) => ({ ...m, active: m.id === rollMode })),
       canRest: actor.type === "character",
+      basic: BASIC_ACTIONS,
+      // Концентрация: dnd5e вешает на актёра состояние «concentrating».
+      concentrating: actor.statuses?.has(CONFIG.DND5E?.specialStatusEffects?.CONCENTRATING ?? "concentrating"),
+      // Героическое вдохновение (правила 2024) — флажок system.attributes.inspiration, только у персонажей.
+      inspiration: { show: actor.type === "character", on: !!attr.inspiration },
+      // При 0 ПЗ у персонажа вместо цифр в сфере — спасброски от смерти (attributes.death).
+      death: actor.type === "character" && value <= 0 ? {
+        successes: attr.death?.success ?? 0,
+        failures: attr.death?.failure ?? 0,
+        success: [0, 1, 2].map((i) => i < (attr.death?.success ?? 0)),
+        failure: [0, 1, 2].map((i) => i < (attr.death?.failure ?? 0))
+      } : null,
       panel: abilities,
       slots: spellSlots(actor)
     };
@@ -681,6 +736,20 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     this.render();
   }
 
+  /** Героическое вдохновение: есть / нет. */
+  static async #toggleInspiration() {
+    const actor = this.actor;
+    if (!actor?.isOwner) return;
+    await actor.update({ "system.attributes.inspiration": !actor.system.attributes.inspiration });
+  }
+
+  /** Спасбросок от смерти — тот же бросок, что кнопка на листе персонажа. */
+  static async #rollDeathSave(event) {
+    const actor = this.actor;
+    if (!actor?.isOwner) return;
+    return actor.rollDeathSave({ event });
+  }
+
   static #openSkills() {
     ui.notifications.info("Окно навыков появится в следующей версии HUD.");
   }
@@ -716,6 +785,16 @@ Hooks.once("init", () => {
     default: false
   });
 
+  game.settings.register(MODULE_ID, "hidePlayers", {
+    name: "Скрывать список игроков",
+    hint: "Пока HUD открыт, список игроков в левом нижнем углу прячется: на его месте стоит HUD.",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: (value) => document.body.classList.toggle("khvor-hide-players", value)
+  });
+
   game.settings.register(MODULE_ID, "hideHotbar", {
     name: "Скрывать стандартную панель макросов",
     hint: "Пока HUD открыт, стандартная панель макросов внизу экрана прячется, чтобы не перекрываться с ним.",
@@ -731,14 +810,18 @@ Hooks.once("ready", () => {
   const hud = new KhvorHud();
   game.modules.get(MODULE_ID).api = { hud };
   document.body.classList.toggle("khvor-hide-hotbar", game.settings.get(MODULE_ID, "hideHotbar"));
+  document.body.classList.toggle("khvor-hide-players", game.settings.get(MODULE_ID, "hidePlayers"));
 
   // Перерисовка не чаще раза в 50 мс, даже если событий много подряд.
   const refresh = foundry.utils.debounce(() => hud.render({ force: true }), 50);
   const hooks = [
-    "canvasReady", "controlToken", "updateToken", "updateActor",
+    "canvasReady", "controlToken", "updateToken", "updateActor", "updateCombat", "deleteCombat",
     "createItem", "updateItem", "deleteItem",
     "createActiveEffect", "updateActiveEffect", "deleteActiveEffect"
   ];
   for (const hook of hooks) Hooks.on(hook, refresh);
+  // Свернули или развернули боковую панель, изменили размер окна — пересчитать место и столбцы.
+  Hooks.on("collapseSidebar", () => setTimeout(refresh, 300)); // после анимации сворачивания
+  window.addEventListener("resize", refresh);
   refresh();
 });
