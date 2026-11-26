@@ -77,8 +77,8 @@ const TABS = [
  */
 const TILE_WIDTH = 53;        // плитка 50 px + промежуток
 const HUD_LEFT = 12;          // отступ HUD от левого края (hud.css)
-const LEFT_BLOCK_WIDTH = 620; // портрет, сфера и левая панель
-const RIGHT_RESERVE = 200;    // правый блок
+const LEFT_BLOCK_WIDTH = 470; // портрет, сфера и левая панель
+const RIGHT_RESERVE = 210;    // правый блок: режим броска и базовые действия
 const PANEL_EXTRAS = 160;     // рамка панели, разделители групп, отступы
 const COLUMNS_MIN = 5;
 const COLUMNS_MAX = 12;
@@ -108,12 +108,20 @@ function tileCategory(item, activity) {
  * На странице rows × columns плиток (columns — от ширины экрана, см. pageColumns()); группы, которые не попали на страницу, скрываются.
  * Возвращает группы страницы, вкладки и номер страницы.
  */
-function paginate(groups, { tab, page, rows, columns = COLUMNS_MAX }) {
+function paginate(groups, { tab, group = null, page, rows, columns = COLUMNS_MAX }) {
   const tabs = TABS.filter((t) => t.id === "all" || groups.some((g) => g.tiles.some((x) => x.category === t.id)));
   if (!tabs.some((t) => t.id === tab)) tab = "all";
+  const inTab = (x) => tab === "all" || x.category === tab;
 
-  // Все плитки вкладки подряд, каждая помнит свою группу.
-  const flat = groups.flatMap((g) => g.tiles.filter((x) => tab === "all" || x.category === tab).map((x) => [g, x]));
+  // Группы, в которых на этой вкладке есть плитки. Фильтр по группе (клик по подписи «Бонусное»)
+  // сбрасывается, если такой группы на вкладке нет.
+  const present = groups.filter((g) => g.tiles.some(inTab));
+  if (!present.some((g) => g.key === group)) group = null;
+
+  // Все плитки вкладки (и выбранной группы) подряд, каждая помнит свою группу.
+  const flat = present
+    .filter((g) => !group || g.key === group)
+    .flatMap((g) => g.tiles.filter(inTab).map((x) => [g, x]));
   const perPage = rows * columns;
   const pages = Math.max(1, Math.ceil(flat.length / perPage));
   page = Math.clamp(page, 0, pages - 1);
@@ -123,14 +131,22 @@ function paginate(groups, { tab, page, rows, columns = COLUMNS_MAX }) {
     if (!shown.has(g.key)) shown.set(g.key, { ...g, tiles: [] });
     shown.get(g.key).tiles.push(x);
   }
-  const pageGroups = [...shown.values()];
-  // В режиме двух строк у группы половина столбцов: плитки идут слева направо, потом вторая строка.
-  for (const g of pageGroups) g.cols = Math.max(1, Math.ceil(g.tiles.length / rows));
+  // При фильтре по группе остальные группы остаются короткими «заглушками» — одной подписью,
+  // чтобы на них можно было переключиться.
+  const pageGroups = group
+    ? present.map((g) => (g.key === group ? (shown.get(g.key) ?? { ...g, tiles: [] }) : { ...g, tiles: [], stub: true }))
+    : [...shown.values()];
+  for (const g of pageGroups) {
+    g.active = g.key === group;
+    // В режиме двух строк у группы половина столбцов: плитки идут слева направо, потом вторая строка.
+    g.cols = Math.max(1, Math.ceil(g.tiles.length / rows));
+  }
 
   return {
     groups: pageGroups,
     tabs: tabs.map((t) => ({ ...t, active: t.id === tab })),
     tab,
+    group,
     page,
     pages,
     pageLabel: `${page + 1}/${pages}`,
@@ -372,36 +388,6 @@ function movement_(actor, speed) {
 /* ---------- Правый блок ---------- */
 
 /**
- * Кнопки правого блока. У персонажа — инвентарь, лист, книга заклинаний (если есть заклинания), журнал;
- * у NPC, которого видит ГМ, — добыча, статблок, цели, эффекты.
- */
-function rightButtons(actor) {
-  if (game.user.isGM && actor.type === "npc") {
-    return [
-      { action: "makeLoot", label: "Добыча", icon: "icon-loot", hint: "Превратить токен в добычу (Item Piles)" },
-      { action: "openSheet", label: "Статблок", icon: "icon-statblock", hint: "Открыть статблок" },
-      { action: "clearTargets", label: "Цели", icon: "icon-targets", hint: targetsHint() },
-      { action: "openEffects", label: "Эффекты", icon: "icon-effects", hint: "Эффекты на существе" }
-    ];
-  }
-  const buttons = [
-    { action: "openInventory", label: "Инвентарь", icon: "icon-inventory", hint: "Инвентарь" },
-    { action: "openSheet", label: "Лист", icon: "icon-sheet", hint: "Лист персонажа" }
-  ];
-  if (actor.items.some((i) => i.type === "spell")) {
-    buttons.push({ action: "openSpells", label: "Книга закл.", icon: "icon-spellbook", hint: "Книга заклинаний" });
-  }
-  buttons.push({ action: "openJournal", label: "Журнал", icon: "icon-journal", hint: "Журнал" });
-  return buttons;
-}
-
-/** Подсказка кнопки «Цели»: кого сейчас выбрал целью этот пользователь. */
-function targetsHint() {
-  const names = [...game.user.targets].map((t) => t.name);
-  return names.length ? `Цели: ${names.join(", ")}. Клик — снять все` : "Целей нет";
-}
-
-/**
  * «Завершить ход»: видна в начатом бою, если существо в нём участвует;
  * нажать можно только в его ход.
  */
@@ -412,24 +398,6 @@ function endTurnState(actor) {
   if (!mine.length) return { show: false };
   const active = mine.some((c) => c.id === combat.combatant?.id);
   return { show: true, active, hint: active ? "Передать ход следующему" : "Сейчас не ваш ход" };
-}
-
-/**
- * Открывает лист на нужной вкладке. Названия вкладок у листа dnd5e и Tidy 5e могут отличаться,
- * поэтому пробуем по очереди; если ни одна не подошла — лист просто открыт.
- */
-async function openSheetTab(actor, tabs) {
-  const sheet = actor?.sheet;
-  if (!sheet) return;
-  await sheet.render({ force: true });
-  for (const tab of tabs) {
-    try {
-      sheet.changeTab?.(tab, "primary");
-      return;
-    } catch {
-      // такой вкладки нет — пробуем следующую
-    }
-  }
 }
 
 /* ---------- Подсказка способности ---------- */
@@ -508,12 +476,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     // Кнопки в шаблоне с data-action="..." вызывают эти функции.
     actions: {
       openSheet: KhvorHud.#openSheet,
-      openInventory: KhvorHud.#openInventory,
-      openSpells: KhvorHud.#openSpells,
-      openEffects: KhvorHud.#openEffects,
-      openJournal: KhvorHud.#openJournal,
-      makeLoot: KhvorHud.#makeLoot,
-      clearTargets: KhvorHud.#clearTargets,
+      setGroup: KhvorHud.#setGroup,
       endTurn: KhvorHud.#endTurn,
       rollInitiative: KhvorHud.#rollInitiative,
       openSkills: KhvorHud.#openSkills,
@@ -539,7 +502,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   actor = null;
 
   /** Выбранная вкладка и страница панели способностей; сбрасываются при смене актёра. */
-  panel = { actorId: null, tab: "all", page: 0 };
+  panel = { actorId: null, tab: "all", group: null, page: 0 };
 
   /** Собирает данные для шаблона. */
   async _prepareContext() {
@@ -551,15 +514,17 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     const sys = actor.system;
     const attr = sys.attributes ?? {};
 
-    if (this.panel.actorId !== actor.id) this.panel = { actorId: actor.id, tab: "all", page: 0 };
+    if (this.panel.actorId !== actor.id) this.panel = { actorId: actor.id, tab: "all", group: null, page: 0 };
     const abilities = paginate(collectAbilities(actor), {
       tab: this.panel.tab,
+      group: this.panel.group,
       page: this.panel.page,
       rows: game.settings.get(MODULE_ID, "tallPanel") ? 2 : 1,
       columns: pageColumns()
     });
     // Запоминаем то, что реально показали: вкладка могла исчезнуть, страниц могло стать меньше.
     this.panel.tab = abilities.tab;
+    this.panel.group = abilities.group;
     this.panel.page = abilities.page;
 
     const hp = attr.hp ?? {};
@@ -616,7 +581,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
         failure: [0, 1, 2].map((i) => i < (attr.death?.failure ?? 0))
       } : null,
       panel: abilities,
-      right: { buttons: rightButtons(actor), endTurn: endTurnState(actor) },
+      endTurn: endTurnState(actor),
       slots: spellSlots(actor)
     };
   }
@@ -724,45 +689,6 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
 
   /* ---------- Действия кнопок ---------- */
 
-  static #openInventory() {
-    return openSheetTab(this.actor, ["inventory"]);
-  }
-
-  static #openSpells() {
-    return openSheetTab(this.actor, ["spells", "spellbook"]);
-  }
-
-  static #openEffects() {
-    return openSheetTab(this.actor, ["effects"]);
-  }
-
-  /** Журнал — вкладка «Журнал» на боковой панели Foundry. */
-  static #openJournal() {
-    if (ui.sidebar?.changeTab) ui.sidebar.changeTab("journal", "primary");
-    else ui.sidebar?.activateTab?.("journal");
-    ui.sidebar?.expand?.();
-  }
-
-  /** Добыча: токен превращается в кучу добычи модуля Item Piles (после подтверждения). */
-  static async #makeLoot() {
-    const api = game.itempiles?.API;
-    if (!api) return ui.notifications.warn("Модуль Item Piles не включён.");
-    const token = this.actor?.token?.object ?? this.actor?.getActiveTokens()?.[0];
-    if (!token) return;
-    const DialogV2 = foundry.applications.api.DialogV2;
-    const ok = await DialogV2.confirm({
-      window: { title: "Добыча" },
-      content: `<p>Превратить «${foundry.utils.escapeHTML?.(token.name) ?? token.name}» в добычу?</p>`
-    });
-    if (ok) await api.turnTokensIntoItemPiles([token]);
-  }
-
-  /** Снять все цели текущего пользователя. */
-  static #clearTargets() {
-    for (const t of [...game.user.targets]) t.setTarget(false, { releaseOthers: false });
-    this.render();
-  }
-
   /** Передать ход следующему участнику боя. */
   static async #endTurn() {
     const combat = game.combat;
@@ -831,6 +757,14 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
 
   static #setTab(event, target) {
     this.panel.tab = target.dataset.tab;
+    this.panel.page = 0;
+    this.render();
+  }
+
+  /** Клик по подписи группы: оставить только её; повторный клик — снова все группы. */
+  static #setGroup(event, target) {
+    const key = target.dataset.group;
+    this.panel.group = this.panel.group === key ? null : key;
     this.panel.page = 0;
     this.render();
   }
@@ -932,7 +866,7 @@ Hooks.once("ready", () => {
   // Перерисовка не чаще раза в 50 мс, даже если событий много подряд.
   const refresh = foundry.utils.debounce(() => hud.render({ force: true }), 50);
   const hooks = [
-    "canvasReady", "controlToken", "updateToken", "updateActor", "updateCombat", "deleteCombat", "combatStart", "targetToken",
+    "canvasReady", "controlToken", "updateToken", "updateActor", "updateCombat", "deleteCombat", "combatStart",
     "createItem", "updateItem", "deleteItem",
     "createActiveEffect", "updateActiveEffect", "deleteActiveEffect"
   ];

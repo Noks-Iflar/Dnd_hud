@@ -40,7 +40,7 @@
     </div>
 
     <div class="kh-panel">
-      {{!-- Верхний ряд: инициатива и навыки, режим броска, отдых --}}
+      {{!-- Верхний ряд: инициатива, навыки, отдых --}}
       <div class="kh-panel-top">
         <button type="button" class="kh-icon-btn" data-action="rollInitiative" data-tooltip="Бросить инициативу" aria-label="Бросить инициативу">
           <img src="{{assets}}/icon-initiative.png" alt="">
@@ -48,11 +48,6 @@
         <button type="button" class="kh-icon-btn" data-action="openSkills" data-tooltip="Навыки и проверки" aria-label="Навыки и проверки">
           <img src="{{assets}}/icon-skills.png" alt="">
         </button>
-        <div class="kh-seg" role="group" aria-label="Режим броска">
-          {{#each modes}}
-          <button type="button" class="kh-seg-btn {{cls}} {{#if active}}active{{/if}}" data-action="setRollMode" data-mode="{{id}}" aria-pressed="{{active}}">{{label}}</button>
-          {{/each}}
-        </div>
         {{#if canRest}}
         <button type="button" class="kh-icon-btn" data-action="shortRest" data-tooltip="Короткий отдых" aria-label="Короткий отдых">
           <img src="{{assets}}/icon-short-rest.png" alt="">
@@ -63,7 +58,7 @@
         {{/if}}
       </div>
 
-      {{!-- Нижний ряд: КБ, СЛ и инициатива, скорость с полоской движения, базовые действия --}}
+      {{!-- Нижний ряд: КБ, СЛ и инициатива, скорость с полоской движения --}}
       <div class="kh-panel-body">
         <div class="kh-ac" data-tooltip="Класс брони">
           <span class="kh-ac-value">{{ac}}</span>
@@ -83,13 +78,6 @@
           <span class="kh-move-value">{{#if move.tracked}}{{move.left}}<small>/{{move.total}}</small>{{else}}{{move.total}}{{/if}} <small>{{units}}</small></span>
           <span class="kh-move-bar">{{#each move.segments}}<i class="{{#if this}}on{{/if}}"></i>{{/each}}</span>
           <span class="kh-stat-label">скорость</span>
-        </div>
-        <div class="kh-basic" role="group" aria-label="Базовые действия">
-          {{#each basic}}
-          <button type="button" class="kh-basic-btn" data-action="basicAction" data-basic="{{id}}" data-tooltip="{{label}}" aria-label="{{label}}">
-            <img src="{{@root.assets}}/{{icon}}.png" alt="">
-          </button>
-          {{/each}}
         </div>
       </div>
     </div>
@@ -130,7 +118,8 @@
 
     <div class="kh-groups">
       {{#each panel.groups}}
-      <div class="kh-group kh-group-{{key}}">
+      <div class="kh-group kh-group-{{key}} {{#if stub}}is-stub{{/if}} {{#if active}}is-active{{/if}}">
+        {{#unless stub}}
         <div class="kh-group-body">
           <div class="kh-tiles" style="--cols: {{cols}}">
             {{#each tiles}}
@@ -146,10 +135,12 @@
             {{/each}}
           </div>
         </div>
-        <div class="kh-group-label">
+        {{/unless}}
+        {{!-- Подпись группы — она же фильтр: клик оставляет только эту группу, повторный клик — все --}}
+        <button type="button" class="kh-group-label" data-action="setGroup" data-group="{{key}}" aria-pressed="{{active}}" data-tooltip="{{#if active}}Показать все группы{{else}}Только «{{label}}»{{/if}}">
           {{#if gem}}<img src="{{@root.assets}}/{{gem}}.png" alt="">{{/if}}
           <span>{{label}}</span>
-        </div>
+        </button>
       </div>
       {{else}}
       <div class="kh-empty">Нет способностей</div>
@@ -157,23 +148,24 @@
     </div>
   </div>
 
-  {{!-- Правый блок: быстрые кнопки и «Завершить ход» --}}
+  {{!-- Правый блок: режим броска, базовые действия, «Завершить ход» (только в бою) --}}
   <div class="kh-right">
-    <div class="kh-right-grid">
-      {{#each right.buttons}}
-      <button type="button" class="kh-right-btn" data-action="{{action}}" data-tooltip="{{hint}}" aria-label="{{label}}">
+    <div class="kh-seg" role="group" aria-label="Режим броска">
+      {{#each modes}}
+      <button type="button" class="kh-seg-btn {{cls}} {{#if active}}active{{/if}}" data-action="setRollMode" data-mode="{{id}}" aria-pressed="{{active}}">{{label}}</button>
+      {{/each}}
+    </div>
+    <div class="kh-basic" role="group" aria-label="Базовые действия">
+      {{#each basic}}
+      <button type="button" class="kh-basic-btn" data-action="basicAction" data-basic="{{id}}" data-tooltip="{{label}}" aria-label="{{label}}">
         <img src="{{@root.assets}}/{{icon}}.png" alt="">
-        <span>{{label}}</span>
       </button>
       {{/each}}
     </div>
-    {{#if right.endTurn.show}}
-    {{!-- «Завершить ход» — отдельно под кнопками, без рамки --}}
-    <div class="kh-end-frame">
-      <button type="button" class="kh-end-turn {{#unless right.endTurn.active}}is-waiting{{/unless}}" data-action="endTurn" {{#unless right.endTurn.active}}disabled{{/unless}} data-tooltip="{{right.endTurn.hint}}">
-        <span>Завершить ход</span>
-      </button>
-    </div>
+    {{#if endTurn.show}}
+    <button type="button" class="kh-end-turn {{#unless endTurn.active}}is-waiting{{/unless}}" data-action="endTurn" {{#unless endTurn.active}}disabled{{/unless}} data-tooltip="{{endTurn.hint}}">
+      <span>Завершить ход</span>
+    </button>
     {{/if}}
   </div>
 {{/if}}
