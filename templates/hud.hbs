@@ -168,7 +168,7 @@
       {{/each}}
     </div>
     {{#if right.endTurn.show}}
-    {{!-- «Завершить ход» — в своей рамке под кнопками --}}
+    {{!-- «Завершить ход» — отдельно под кнопками, без рамки --}}
     <div class="kh-end-frame">
       <button type="button" class="kh-end-turn {{#unless right.endTurn.active}}is-waiting{{/unless}}" data-action="endTurn" {{#unless right.endTurn.active}}disabled{{/unless}} data-tooltip="{{right.endTurn.hint}}">
         <span>Завершить ход</span>

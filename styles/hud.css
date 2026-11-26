@@ -637,8 +637,7 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   gap: 4px;
   pointer-events: auto;
 }
-.kh-right-grid,
-.kh-end-frame {
+.kh-right-grid {
   border-style: solid;
   border-width: 12px;
   border-image: url("../assets/panel-frame.png") 64 fill / 12px / 0 stretch;
