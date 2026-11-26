@@ -305,6 +305,45 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
 .kh-tile:hover .kh-tile-slot { filter: drop-shadow(0 0 5px rgba(216, 50, 63, 0.55)); }
 .kh-tile:hover .kh-tile-name { color: var(--kh-text); }
 .kh-tile:active .kh-tile-slot { transform: scale(0.95); }
+
+/* Потрачено (заряды кончились, на перезарядке, не хватает легендарных действий) */
+.kh-tile.is-spent .kh-tile-img { filter: grayscale(0.85) brightness(0.45); }
+.kh-tile.is-spent .kh-tile-name { color: #6e6a78; }
+
+/* Значок в правом верхнем углу: заряды «2/3», перезарядка «5–6», количество «×3» */
+.kh-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(8, 7, 10, 0.88);
+  box-shadow: 0 0 0 1px #000;
+  font-family: var(--kh-sans); /* у Cormorant старинные цифры: «1/1» похоже на «ı/ı» */
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: lining-nums tabular-nums;
+  line-height: 14px;
+  color: #ffc27a;
+}
+.kh-badge.is-recharge { color: var(--kh-violet); }
+.kh-badge + .kh-badge { top: auto; bottom: 1px; color: var(--kh-text); }
+
+/* Цена легендарного действия — красные ромбики в левом верхнем углу */
+.kh-cost {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  display: flex;
+  gap: 2px;
+}
+.kh-cost i {
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  background: var(--kh-blood);
+  box-shadow: 0 0 0 1px #000, 0 0 4px rgba(216, 50, 63, 0.8);
+}
 /* Подпись переносится, но не больше двух строк; место под две строки есть всегда,
    чтобы подписи групп стояли на одной линии. */
 .kh-tile-name {

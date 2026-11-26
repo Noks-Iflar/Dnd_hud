@@ -47,6 +47,51 @@ const tileName = (name) => name.replace(/\s*\([^)]*\)\s*$/, "").trim();
 const isGenericIcon = (img) => !img || img.startsWith("systems/dnd5e/icons/svg/");
 
 /**
+ * Сколько использований осталось. В выгрузке max — строка-формула («2»), а у готового
+ * предмета в Foundry уже число; остаток считаем сами как max − spent.
+ * Возвращает null, если у способности нет ограничения.
+ */
+function usesLeft(uses) {
+  const max = Number(uses?.max);
+  if (!Number.isFinite(max) || max <= 0) return null;
+  return { value: Math.max(0, max - (uses.spent ?? 0)), max };
+}
+
+/**
+ * Значки и состояние плитки:
+ * - заряды «2/3» (сначала у самой активности, как «Огненный шар» 1/день, потом у предмета);
+ * - перезарядка «5–6» (recovery с period "recharge" и порогом в formula);
+ * - количество «×3» у расходников;
+ * - цена легендарного действия ромбами;
+ * - spent — плитка бледнеет: заряды кончились или не хватает легендарных действий.
+ */
+function tileState(actor, item, activity, groupKey) {
+  const uses = usesLeft(activity.uses) ?? usesLeft(item.system.uses);
+  const recharge = item.system.uses?.recovery?.find((r) => r.period === "recharge");
+  const state = { badge: null, cost: null, spent: false };
+
+  if (recharge) {
+    const from = Number(recharge.formula) || 6;
+    state.badge = from >= 6 ? "6" : `${from}–6`;
+    state.recharge = true;
+  } else if (uses) {
+    state.badge = `${uses.value}/${uses.max}`;
+  }
+  if (uses && uses.value === 0) state.spent = true;
+
+  if (item.type === "consumable" && (item.system.quantity ?? 1) > 1) state.quantity = `×${item.system.quantity}`;
+
+  if (groupKey === "legendary") {
+    const cost = activity.activation?.value || 1;
+    const legact = actor.system.resources?.legact;
+    const left = (legact?.max ?? 0) - (legact?.spent ?? 0);
+    state.cost = Array.from({ length: cost });
+    if (cost > left) state.spent = true;
+  }
+  return state;
+}
+
+/**
  * Собирает способности актёра в группы по типу действия.
  * Одна плитка — одна активность предмета (у «Заклинаний» дракона их четыре).
  * Пустые группы не возвращаются, так что пустых ячеек в HUD не будет.
@@ -85,7 +130,10 @@ function collectAbilities(actor) {
       // Имя активности нужно, только если у предмета их несколько (заклинания дракона).
       const name = ruName(activities.size > 1 && activity.name ? activity.name : item.name);
 
-      groups[groupKey].push({ itemId: item.id, activityId: activity.id, name, label: tileName(name), img });
+      groups[groupKey].push({
+        itemId: item.id, activityId: activity.id, name, label: tileName(name), img,
+        ...tileState(actor, item, activity, groupKey)
+      });
     }
   }
 

@@ -84,9 +84,12 @@
       <div class="kh-group kh-group-{{key}}">
         <div class="kh-tiles">
           {{#each tiles}}
-          <button type="button" class="kh-tile" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" data-tooltip="{{name}}" aria-label="{{name}}">
+          <button type="button" class="kh-tile {{#if spent}}is-spent{{/if}}" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" data-tooltip="{{name}}" aria-label="{{name}}{{#if badge}} ({{badge}}){{/if}}">
             <span class="kh-tile-slot">
               <img class="kh-tile-img" src="{{img}}" alt="">
+              {{#if badge}}<span class="kh-badge {{#if recharge}}is-recharge{{/if}}">{{badge}}</span>{{/if}}
+              {{#if quantity}}<span class="kh-badge">{{quantity}}</span>{{/if}}
+              {{#if cost}}<span class="kh-cost">{{#each cost}}<i></i>{{/each}}</span>{{/if}}
             </span>
             <span class="kh-tile-name">{{label}}</span>
           </button>
