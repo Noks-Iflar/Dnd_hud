@@ -1,0 +1,20 @@
+{
+  "id": "khvor-hud",
+  "title": "HUD Хвора",
+  "description": "Боевой HUD в стиле тёмного фэнтези для кампании «Хвор»: сфера здоровья, портрет, характеристики, способности.",
+  "version": "0.1.2",
+  "authors": [
+    { "name": "Нокс" }
+  ],
+  "compatibility": {
+    "minimum": "13",
+    "verified": "14"
+  },
+  "relationships": {
+    "systems": [
+      { "id": "dnd5e", "type": "system" }
+    ]
+  },
+  "esmodules": ["scripts/main.js"],
+  "styles": ["styles/hud.css"]
+}
