@@ -1,4 +1,4 @@
-<div class="kh-root">
+<div class="kh-root" lang="ru">
 {{#if actor}}
   <div class="kh-left">
 
@@ -74,5 +74,45 @@
       </div>
     </div>
   </div>
+
+  {{!-- Способности: группы по типу действия, под каждой — подпись с ромбом --}}
+  {{#if groups.length}}
+  <div class="kh-center">
+    <img class="kh-crest" src="{{assets}}/panel-crest.png" alt="">
+    <div class="kh-groups">
+      {{#each groups}}
+      <div class="kh-group kh-group-{{key}}">
+        <div class="kh-tiles">
+          {{#each tiles}}
+          <button type="button" class="kh-tile {{#if spent}}is-spent{{/if}}" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" data-tooltip="{{name}}" aria-label="{{name}}{{#if badge}} ({{badge}}){{/if}}">
+            <span class="kh-tile-slot">
+              <img class="kh-tile-img" src="{{img}}" alt="">
+              {{#if badge}}<span class="kh-badge {{#if recharge}}is-recharge{{/if}}">{{badge}}</span>{{/if}}
+              {{#if quantity}}<span class="kh-badge">{{quantity}}</span>{{/if}}
+              {{#if cost}}<span class="kh-cost">{{#each cost}}<i></i>{{/each}}</span>{{/if}}
+            </span>
+            <span class="kh-tile-name">{{label}}</span>
+          </button>
+          {{/each}}
+          {{#if basic}}
+          {{!-- Базовые действия: мини-сетка 3 × 2 после способностей группы «Действие» --}}
+          <div class="kh-basic" role="group" aria-label="Базовые действия">
+            {{#each basic}}
+            <button type="button" class="kh-basic-btn" data-action="basicAction" data-basic="{{id}}" data-tooltip="{{label}}" aria-label="{{label}}">
+              <img src="{{@root.assets}}/{{icon}}.png" alt="">
+            </button>
+            {{/each}}
+          </div>
+          {{/if}}
+        </div>
+        <div class="kh-group-label">
+          {{#if gem}}<img src="{{@root.assets}}/{{gem}}.png" alt="">{{/if}}
+          <span>{{label}}</span>
+        </div>
+      </div>
+      {{/each}}
+    </div>
+  </div>
+  {{/if}}
 {{/if}}
 </div>

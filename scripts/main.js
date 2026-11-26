@@ -1,6 +1,7 @@
 /**
  * HUD Хвора — основной скрипт модуля.
- * Версия 0.1: левый блок — сфера ПЗ, портрет, характеристики, режим броска, отдых.
+ * Левый блок — сфера ПЗ, портрет, характеристики, режим броска, отдых.
+ * Центральный блок — способности, сгруппированные по типу действия.
  */
 
 const MODULE_ID = "khvor-hud";
@@ -24,6 +25,154 @@ const signed = (n) => (n >= 0 ? `+${n}` : `−${Math.abs(n)}`);
 /** Единицы движения из dnd5e в русские сокращения. */
 const UNITS = { ft: "фт", m: "м", mi: "миль", km: "км" };
 
+/**
+ * Группы панели способностей в порядке показа.
+ * key — тип активации dnd5e (activity.activation.type), «items» — расходники (зелья, свитки).
+ */
+const GROUPS = [
+  { key: "action", label: "Действие", gem: "gem-action" },
+  { key: "bonus", label: "Бонусное", gem: "gem-bonus" },
+  { key: "reaction", label: "Реакция", gem: "gem-reaction" },
+  { key: "legendary", label: "Легендарные", gem: null },
+  { key: "items", label: "Предметы", gem: null }
+];
+
+/**
+ * Базовые действия из правил 2024 года, мини-сетка в группе «Действие».
+ * status — id состояния Foundry, которое включается кнопкой, если такое состояние есть в мире.
+ * skill — навык, проверка которого бросается сразу.
+ */
+const BASIC_ACTIONS = [
+  { id: "dash", label: "Рывок", icon: "icon-dash",
+    rule: "До конца хода скорость увеличивается на значение текущей скорости." },
+  { id: "disengage", label: "Отход", icon: "icon-disengage",
+    rule: "До конца хода перемещение не провоцирует атаки." },
+  { id: "dodge", label: "Уклонение", icon: "icon-dodge", status: "dodging",
+    rule: "До начала следующего хода атаки по вам с помехой, спасброски Ловкости с преимуществом. Пропадает, если вы недееспособны или ваша скорость 0." },
+  { id: "help", label: "Помощь", icon: "icon-help",
+    rule: "Помощь союзнику в проверке характеристики или атаке по существу рядом с вами: следующий такой бросок союзника — с преимуществом." },
+  { id: "hide", label: "Засада", icon: "icon-hide", skill: "ste",
+    rule: "Проверка Ловкости (Скрытность) СЛ 15, нужно быть вне поля зрения врагов. При успехе вы невидимы, пока не выдадите себя." },
+  { id: "ready", label: "Подготовка", icon: "icon-ready",
+    rule: "Выберите действие и условие. Когда условие наступит до вашего следующего хода, выполните действие реакцией." }
+];
+
+/** Мини-сетка базовых действий встаёт в группу «Действие»; если её нет, группа создаётся. */
+function withBasicActions(groups) {
+  let action = groups.find((g) => g.key === "action");
+  if (!action) {
+    action = { ...GROUPS[0], tiles: [] };
+    groups.unshift(action);
+  }
+  action.basic = BASIC_ACTIONS;
+  return groups;
+}
+
+/** «Раздирание [Rend]» → «Раздирание»: английское название в квадратных скобках не нужно. */
+const ruName = (name) => (name ?? "").replace(/\s*\[[^\]]*\]\s*$/, "").trim();
+
+/** Подпись на плитке короче: «Рассеивание магии (2/день)» → «Рассеивание магии». */
+const tileName = (name) => name.replace(/\s*\([^)]*\)\s*$/, "").trim();
+
+/** Стандартные значки dnd5e (например, силуэт монстра) хуже картинки самого предмета. */
+const isGenericIcon = (img) => !img || img.startsWith("systems/dnd5e/icons/svg/");
+
+/**
+ * Сколько использований осталось. В выгрузке max — строка-формула («2»), а у готового
+ * предмета в Foundry уже число; остаток считаем сами как max − spent.
+ * Возвращает null, если у способности нет ограничения.
+ */
+function usesLeft(uses) {
+  const max = Number(uses?.max);
+  if (!Number.isFinite(max) || max <= 0) return null;
+  return { value: Math.max(0, max - (uses.spent ?? 0)), max };
+}
+
+/**
+ * Значки и состояние плитки:
+ * - заряды «2/3» (сначала у самой активности, как «Огненный шар» 1/день, потом у предмета);
+ * - перезарядка «5–6» (recovery с period "recharge" и порогом в formula);
+ * - количество «×3» у расходников;
+ * - цена легендарного действия ромбами;
+ * - spent — плитка бледнеет: заряды кончились или не хватает легендарных действий.
+ */
+function tileState(actor, item, activity, groupKey) {
+  const uses = usesLeft(activity.uses) ?? usesLeft(item.system.uses);
+  const recharge = item.system.uses?.recovery?.find((r) => r.period === "recharge");
+  const state = { badge: null, cost: null, spent: false };
+
+  if (recharge) {
+    const from = Number(recharge.formula) || 6;
+    state.badge = from >= 6 ? "6" : `${from}–6`;
+    state.recharge = true;
+  } else if (uses) {
+    state.badge = `${uses.value}/${uses.max}`;
+  }
+  if (uses && uses.value === 0) state.spent = true;
+
+  if (item.type === "consumable" && (item.system.quantity ?? 1) > 1) state.quantity = `×${item.system.quantity}`;
+
+  if (groupKey === "legendary") {
+    const cost = activity.activation?.value || 1;
+    const legact = actor.system.resources?.legact;
+    const left = (legact?.max ?? 0) - (legact?.spent ?? 0);
+    state.cost = Array.from({ length: cost });
+    if (cost > left) state.spent = true;
+  }
+  return state;
+}
+
+/**
+ * Собирает способности актёра в группы по типу действия.
+ * Одна плитка — одна активность предмета (у «Заклинаний» дракона их четыре).
+ * Пустые группы не возвращаются, так что пустых ячеек в HUD не будет.
+ */
+function collectAbilities(actor) {
+  const items = [...actor.items].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+
+  // Заклинания, которые активность «cast» создаёт сама. В флаге cachedFor — путь к этой активности,
+  // например ".Item.mmSpellcasting00.Activity.NYI0XAuSZOULfXoN". Такие копии отдельно не показываем,
+  // но берём у них картинку для плитки.
+  const cachedSpells = new Map();
+  for (const item of items) {
+    const cachedFor = item.getFlag("dnd5e", "cachedFor");
+    if (cachedFor) cachedSpells.set(cachedFor, item);
+  }
+
+  const groups = Object.fromEntries(GROUPS.map((g) => [g.key, []]));
+
+  for (const item of items) {
+    if (item.getFlag("dnd5e", "cachedFor")) continue;
+    // Заклинания игроков добавим, когда будет выгрузка листа игрока: нужно понять, как хранится подготовка.
+    if (item.type === "spell") continue;
+    // Оружие и снаряжение — только надетое.
+    if (["weapon", "equipment"].includes(item.type) && !item.system.equipped) continue;
+
+    const activities = item.system.activities;
+    if (!activities?.size) continue; // пассивные черты без действий
+
+    // Коллекция Foundry при for...of отдаёт значения, а не пары.
+    for (const activity of activities) {
+      const groupKey = item.type === "consumable" ? "items" : activity.activation?.type;
+      if (!groups[groupKey]) continue; // «особое», «минута», «час» и т. п. в панель не попадают
+
+      const spell = activity.type === "cast" ? cachedSpells.get(`.Item.${item.id}.Activity.${activity.id}`) : null;
+      const img = spell?.img ?? (isGenericIcon(activity.img) ? item.img : activity.img);
+      // Имя активности нужно, только если у предмета их несколько (заклинания дракона).
+      const name = ruName(activities.size > 1 && activity.name ? activity.name : item.name);
+
+      groups[groupKey].push({
+        itemId: item.id, activityId: activity.id, name, label: tileName(name), img,
+        ...tileState(actor, item, activity, groupKey)
+      });
+    }
+  }
+
+  return GROUPS
+    .map((g) => ({ ...g, tiles: groups[g.key] }))
+    .filter((g) => g.tiles.length > 0);
+}
+
 class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS = {
     id: "khvor-hud",
@@ -37,6 +186,8 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       rollInitiative: KhvorHud.#rollInitiative,
       openSkills: KhvorHud.#openSkills,
       setRollMode: KhvorHud.#setRollMode,
+      useAbility: KhvorHud.#useAbility,
+      basicAction: KhvorHud.#basicAction,
       shortRest: KhvorHud.#shortRest,
       longRest: KhvorHud.#longRest
     }
@@ -98,7 +249,8 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
         { id: "normal", label: "Обычн.", cls: "" },
         { id: "disadvantage", label: "Помеха", cls: "dis" }
       ].map((m) => ({ ...m, active: m.id === rollMode })),
-      canRest: actor.type === "character"
+      canRest: actor.type === "character",
+      groups: withBasicActions(collectAbilities(actor))
     };
   }
 
@@ -128,6 +280,54 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!actor) return;
     if (typeof actor.rollInitiativeDialog === "function") return actor.rollInitiativeDialog({ createCombatants: true });
     return actor.rollInitiative({ createCombatants: true });
+  }
+
+  /**
+   * Клик по плитке: используем активность так же, как кнопка на листе персонажа.
+   * Дальше всё делает dnd5e (окно расхода ячеек и зарядов, карточка в чате), а Midi-QOL
+   * подхватывает использование сам.
+   */
+  static async #useAbility(event, target) {
+    const actor = this.actor;
+    if (!actor) return;
+    if (!actor.isOwner) {
+      ui.notifications.warn("Это не ваш персонаж.");
+      return;
+    }
+    const { itemId, activityId } = target.dataset;
+    const item = actor.items.get(itemId);
+    const activity = item?.system.activities?.get(activityId);
+    if (!activity) {
+      // Предмет успели удалить, а HUD ещё не перерисовался.
+      ui.notifications.warn("Способность не найдена. Попробуйте ещё раз.");
+      return this.render();
+    }
+    return activity.use({ event });
+  }
+
+  /**
+   * Базовое действие: карточка в чат с кратким правилом.
+   * Засада — ещё и проверка Скрытности. Если в Foundry есть подходящее состояние
+   * (например, «уклонение»), оно включается или выключается на актёре.
+   */
+  static async #basicAction(event, target) {
+    const actor = this.actor;
+    const basic = BASIC_ACTIONS.find((b) => b.id === target.dataset.basic);
+    if (!actor || !basic) return;
+    if (!actor.isOwner) {
+      ui.notifications.warn("Это не ваш персонаж.");
+      return;
+    }
+
+    await ChatMessage.create({
+      speaker: ChatMessage.getSpeaker({ actor }),
+      content: `<div class="kh-chat-basic"><h3>${basic.label}</h3><p>${basic.rule}</p></div>`
+    });
+
+    const status = basic.status && CONFIG.statusEffects.find((s) => s.id === basic.status);
+    if (status) await actor.toggleStatusEffect(status.id);
+
+    if (basic.skill) await actor.rollSkill({ skill: basic.skill, event });
   }
 
   static #openSkills() {
