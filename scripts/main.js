@@ -57,6 +57,66 @@ const BASIC_ACTIONS = [
     rule: "Выберите действие и условие. Когда условие наступит до вашего следующего хода, выполните действие реакцией." }
 ];
 
+/** Вкладки-фильтры над панелью. «Все» есть всегда, остальные — только если в них что-то есть. */
+const TABS = [
+  { id: "all", label: "Все" },
+  { id: "attacks", label: "Атаки" },
+  { id: "spells", label: "Заклинания" },
+  { id: "features", label: "Умения" },
+  { id: "items", label: "Предметы" }
+];
+
+/** Сколько столбцов плиток помещается на одной странице панели (одна плитка ≈ 64 px). */
+const PAGE_COLUMNS = 12;
+
+/** К какой вкладке относится плитка. */
+function tileCategory(item, activity) {
+  if (["consumable", "tool", "equipment", "loot"].includes(item.type)) return "items";
+  if (item.type === "spell" || activity.type === "cast") return "spells";
+  if (item.type === "weapon" || activity.type === "attack") return "attacks";
+  return "features";
+}
+
+/**
+ * Готовит панель к показу: оставляет плитки выбранной вкладки и режет их на страницы.
+ * На странице rows × PAGE_COLUMNS плиток; группы, которые не попали на страницу, скрываются.
+ * Возвращает группы страницы, вкладки и номер страницы.
+ */
+function paginate(groups, { tab, page, rows }) {
+  const tabs = TABS.filter((t) => t.id === "all" || groups.some((g) => g.tiles.some((x) => x.category === t.id)));
+  if (!tabs.some((t) => t.id === tab)) tab = "all";
+
+  // Все плитки вкладки подряд, каждая помнит свою группу.
+  const flat = groups.flatMap((g) => g.tiles.filter((x) => tab === "all" || x.category === tab).map((x) => [g, x]));
+  const perPage = rows * PAGE_COLUMNS;
+  const pages = Math.max(1, Math.ceil(flat.length / perPage));
+  page = Math.clamp(page, 0, pages - 1);
+
+  const shown = new Map();
+  for (const [g, x] of flat.slice(page * perPage, (page + 1) * perPage)) {
+    if (!shown.has(g.key)) shown.set(g.key, { ...g, tiles: [] });
+    shown.get(g.key).tiles.push(x);
+  }
+  let pageGroups = [...shown.values()];
+  // В режиме двух строк у группы половина столбцов: плитки идут слева направо, потом вторая строка.
+  for (const g of pageGroups) g.cols = Math.max(1, Math.ceil(g.tiles.length / rows));
+  // Базовые действия — на первой странице вкладки «Все».
+  if (tab === "all" && page === 0) pageGroups = withBasicActions(pageGroups);
+
+  return {
+    groups: pageGroups,
+    tabs: tabs.map((t) => ({ ...t, active: t.id === tab })),
+    tab,
+    page,
+    pages,
+    pageLabel: `${page + 1}/${pages}`,
+    multi: pages > 1,
+    hasPrev: page > 0,
+    hasNext: page < pages - 1,
+    tall: rows === 2
+  };
+}
+
 /** Мини-сетка базовых действий встаёт в группу «Действие»; если её нет, группа создаётся. */
 function withBasicActions(groups) {
   let action = groups.find((g) => g.key === "action");
@@ -163,6 +223,7 @@ function collectAbilities(actor) {
 
       groups[groupKey].push({
         itemId: item.id, activityId: activity.id, name, label: tileName(name), img,
+        category: tileCategory(item, activity),
         ...tileState(actor, item, activity, groupKey)
       });
     }
@@ -188,6 +249,10 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       setRollMode: KhvorHud.#setRollMode,
       useAbility: KhvorHud.#useAbility,
       basicAction: KhvorHud.#basicAction,
+      setTab: KhvorHud.#setTab,
+      prevPage: KhvorHud.#prevPage,
+      nextPage: KhvorHud.#nextPage,
+      toggleRows: KhvorHud.#toggleRows,
       shortRest: KhvorHud.#shortRest,
       longRest: KhvorHud.#longRest
     }
@@ -200,6 +265,9 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   /** Актёр, которого сейчас показывает HUD. */
   actor = null;
 
+  /** Выбранная вкладка и страница панели способностей; сбрасываются при смене актёра. */
+  panel = { actorId: null, tab: "all", page: 0 };
+
   /** Собирает данные для шаблона. */
   async _prepareContext() {
     this.actor = findActor();
@@ -209,6 +277,16 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
 
     const sys = actor.system;
     const attr = sys.attributes ?? {};
+
+    if (this.panel.actorId !== actor.id) this.panel = { actorId: actor.id, tab: "all", page: 0 };
+    const abilities = paginate(collectAbilities(actor), {
+      tab: this.panel.tab,
+      page: this.panel.page,
+      rows: game.settings.get(MODULE_ID, "tallPanel") ? 2 : 1
+    });
+    // Запоминаем то, что реально показали: вкладка могла исчезнуть, страниц могло стать меньше.
+    this.panel.tab = abilities.tab;
+    this.panel.page = abilities.page;
 
     const hp = attr.hp ?? {};
     const max = hp.effectiveMax ?? hp.max ?? 0;
@@ -250,7 +328,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
         { id: "disadvantage", label: "Помеха", cls: "dis" }
       ].map((m) => ({ ...m, active: m.id === rollMode })),
       canRest: actor.type === "character",
-      groups: withBasicActions(collectAbilities(actor))
+      panel: abilities
     };
   }
 
@@ -330,6 +408,30 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     if (basic.skill) await actor.rollSkill({ skill: basic.skill, event });
   }
 
+  static #setTab(event, target) {
+    this.panel.tab = target.dataset.tab;
+    this.panel.page = 0;
+    this.render();
+  }
+
+  static #prevPage() {
+    this.panel.page -= 1;
+    this.render();
+  }
+
+  static #nextPage() {
+    this.panel.page += 1;
+    this.render();
+  }
+
+  /** Одна или две строки плиток; выбор запоминается в настройках клиента. */
+  static async #toggleRows() {
+    const tall = game.settings.get(MODULE_ID, "tallPanel");
+    await game.settings.set(MODULE_ID, "tallPanel", !tall);
+    this.panel.page = 0;
+    this.render();
+  }
+
   static #openSkills() {
     ui.notifications.info("Окно навыков появится в следующей версии HUD.");
   }
@@ -356,6 +458,13 @@ Hooks.once("init", () => {
     config: false,
     type: String,
     default: "normal"
+  });
+
+  game.settings.register(MODULE_ID, "tallPanel", {
+    scope: "client",
+    config: false,
+    type: Boolean,
+    default: false
   });
 
   game.settings.register(MODULE_ID, "hideHotbar", {

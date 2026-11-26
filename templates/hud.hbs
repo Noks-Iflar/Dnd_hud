@@ -75,25 +75,43 @@
     </div>
   </div>
 
-  {{!-- Способности: группы по типу действия, под каждой — подпись с ромбом --}}
-  {{#if groups.length}}
-  <div class="kh-center">
+  {{!-- Способности: вкладки и страницы сверху, ниже группы по типу действия с подписью и ромбом --}}
+  <div class="kh-center {{#if panel.tall}}is-tall{{/if}}">
     <img class="kh-crest" src="{{assets}}/panel-crest.png" alt="">
+
+    <div class="kh-bar">
+      <div class="kh-tabs" role="tablist" aria-label="Фильтр способностей">
+        {{#each panel.tabs}}
+        <button type="button" class="kh-tab {{#if active}}active{{/if}}" role="tab" aria-selected="{{active}}" data-action="setTab" data-tab="{{id}}">{{label}}</button>
+        {{/each}}
+      </div>
+      <div class="kh-pager">
+        {{#if panel.multi}}
+        <button type="button" class="kh-page-btn" data-action="prevPage" data-tooltip="Предыдущая страница" aria-label="Предыдущая страница" {{#unless panel.hasPrev}}disabled{{/unless}}>‹</button>
+        <span class="kh-page-num">{{panel.pageLabel}}</span>
+        <button type="button" class="kh-page-btn" data-action="nextPage" data-tooltip="Следующая страница" aria-label="Следующая страница" {{#unless panel.hasNext}}disabled{{/unless}}>›</button>
+        {{/if}}
+        <button type="button" class="kh-page-btn kh-rows-btn {{#if panel.tall}}active{{/if}}" data-action="toggleRows" data-tooltip="{{#if panel.tall}}Одна строка{{else}}Две строки{{/if}}" aria-label="{{#if panel.tall}}Одна строка{{else}}Две строки{{/if}}" aria-pressed="{{panel.tall}}"><i class="fa-solid {{#if panel.tall}}fa-angles-down{{else}}fa-angles-up{{/if}}"></i></button>
+      </div>
+    </div>
+
     <div class="kh-groups">
-      {{#each groups}}
+      {{#each panel.groups}}
       <div class="kh-group kh-group-{{key}}">
-        <div class="kh-tiles">
-          {{#each tiles}}
-          <button type="button" class="kh-tile {{#if spent}}is-spent{{/if}}" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" data-tooltip="{{name}}" aria-label="{{name}}{{#if badge}} ({{badge}}){{/if}}">
-            <span class="kh-tile-slot">
-              <img class="kh-tile-img" src="{{img}}" alt="">
-              {{#if badge}}<span class="kh-badge {{#if recharge}}is-recharge{{/if}}">{{badge}}</span>{{/if}}
-              {{#if quantity}}<span class="kh-badge">{{quantity}}</span>{{/if}}
-              {{#if cost}}<span class="kh-cost">{{#each cost}}<i></i>{{/each}}</span>{{/if}}
-            </span>
-            <span class="kh-tile-name">{{label}}</span>
-          </button>
-          {{/each}}
+        <div class="kh-group-body">
+          <div class="kh-tiles" style="--cols: {{cols}}">
+            {{#each tiles}}
+            <button type="button" class="kh-tile {{#if spent}}is-spent{{/if}}" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" data-tooltip="{{name}}" aria-label="{{name}}{{#if badge}} ({{badge}}){{/if}}">
+              <span class="kh-tile-slot">
+                <img class="kh-tile-img" src="{{img}}" alt="">
+                {{#if badge}}<span class="kh-badge {{#if recharge}}is-recharge{{/if}}">{{badge}}</span>{{/if}}
+                {{#if quantity}}<span class="kh-badge">{{quantity}}</span>{{/if}}
+                {{#if cost}}<span class="kh-cost">{{#each cost}}<i></i>{{/each}}</span>{{/if}}
+              </span>
+              <span class="kh-tile-name">{{label}}</span>
+            </button>
+            {{/each}}
+          </div>
           {{#if basic}}
           {{!-- Базовые действия: мини-сетка 3 × 2 после способностей группы «Действие» --}}
           <div class="kh-basic" role="group" aria-label="Базовые действия">
@@ -110,9 +128,10 @@
           <span>{{label}}</span>
         </div>
       </div>
+      {{else}}
+      <div class="kh-empty">Нет способностей</div>
       {{/each}}
     </div>
   </div>
-  {{/if}}
 {{/if}}
 </div>
