@@ -499,3 +499,20 @@ body.khvor-hud-active.khvor-hide-hotbar #hotbar { display: none; }
 }
 .kh-tip-desc p { margin: 0 0 6px; }
 .kh-tip-hint { margin-top: 8px; font-size: 11px; color: #7d7888; }
+
+/* ---------- Ячейки заклинаний ---------- */
+.kh-slots { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.kh-slot-row { display: flex; align-items: center; gap: 1px; }
+.kh-slot-label {
+  margin-right: 3px;
+  font-family: var(--kh-serif);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--kh-arcane);
+}
+.kh-slot-row.is-pact .kh-slot-label { font-size: 14px; color: var(--kh-violet); }
+.kh-slot-row img { width: 14px; height: 16px; object-fit: contain; }
+
+/* Значок круга заклинания на плитке: синий, у договора фиолетовый */
+.kh-badge.is-level { font-family: var(--kh-serif); font-size: 13px; color: var(--kh-arcane); }
+.kh-badge.is-level.is-pact { color: var(--kh-violet); }
