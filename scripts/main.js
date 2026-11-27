@@ -795,10 +795,10 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       rows: game.settings.get(MODULE_ID, "tallPanel") ? 2 : 1,
       columns: pageColumns()
     });
-    // Запоминаем то, что реально показали: вкладка могла исчезнуть, страниц могло стать меньше.
     // Ромбы экономии действий у групп «Действие / Бонусное / Реакция».
     const economy = economyState(actor);
     for (const g of abilities.groups) g.spent = !!economy?.[g.key];
+    // Запоминаем то, что реально показали: вкладка могла исчезнуть, страниц могло стать меньше.
     this.panel.tab = abilities.tab;
     this.panel.group = abilities.group;
     this.panel.page = abilities.page;
