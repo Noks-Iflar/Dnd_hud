@@ -1,0 +1,49 @@
+# Сборка модуля для установки в Foundry по ссылке.
+# Когда в main меняется версия в module.json (или по кнопке Run workflow), собирается module.zip
+# и создаётся релиз vX.Y.Z с module.json и module.zip. Foundry ставит и обновляет модуль по ссылке
+# https://github.com/Noks-Iflar/Dnd_hud/releases/latest/download/module.json
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [module.json]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "version=$(jq -r .version module.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if release exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build module.zip
+        if: steps.check.outputs.exists == 'false'
+        # В архив только то, что нужно Foundry: без макетов, инструментов и выгрузок.
+        run: zip -r module.zip module.json README.md scripts styles templates assets fonts lang
+
+      - name: Create release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" module.json module.zip \
+            --title "HUD Хвора ${{ steps.version.outputs.version }}" \
+            --notes "Установка в Foundry: Add-on Modules → Install Module → Manifest URL: https://github.com/Noks-Iflar/Dnd_hud/releases/latest/download/module.json"

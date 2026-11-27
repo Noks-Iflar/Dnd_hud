@@ -956,6 +956,12 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
 /* ---------- Подключение к Foundry ---------- */
 
 Hooks.once("init", () => {
+  // Состояние «Хвор» — магическая зараза мира: своя иконка, видно в меню состояний токена.
+  // HUD по нему красит сферу ПЗ (orb-blood-khvor) и подсвечивает её фиолетовым.
+  if (!CONFIG.statusEffects.some((s) => s.id === "khvor")) {
+    CONFIG.statusEffects.push({ id: "khvor", name: "KHVOR.Status.khvor", img: `${ASSETS}/status-khvor.png` });
+  }
+
   game.settings.register(MODULE_ID, "rollMode", {
     scope: "client",
     config: false,
@@ -971,8 +977,8 @@ Hooks.once("init", () => {
   });
 
   game.settings.register(MODULE_ID, "hidePlayers", {
-    name: "Скрывать список игроков",
-    hint: "Пока HUD открыт, список игроков в левом нижнем углу прячется: на его месте стоит HUD.",
+    name: "KHVOR.Settings.hidePlayers.name",
+    hint: "KHVOR.Settings.hidePlayers.hint",
     scope: "client",
     config: true,
     type: Boolean,
@@ -981,8 +987,8 @@ Hooks.once("init", () => {
   });
 
   game.settings.register(MODULE_ID, "hideHotbar", {
-    name: "Скрывать стандартную панель макросов",
-    hint: "Пока HUD открыт, стандартная панель макросов внизу экрана прячется, чтобы не перекрываться с ним.",
+    name: "KHVOR.Settings.hideHotbar.name",
+    hint: "KHVOR.Settings.hideHotbar.hint",
     scope: "client",
     config: true,
     type: Boolean,
