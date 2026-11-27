@@ -749,8 +749,8 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-init-portrait {
   position: relative;
   display: block;
-  width: 72px;
-  height: 96px; /* пропорция рамки 239:320 */
+  width: 61px;
+  height: 82px; /* пропорция рамки 239:320 */
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.7));
 }
 /* Окно рамки initiative-frame: x 16–222, y 46–274 из 239×320 */
@@ -780,8 +780,8 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-init.is-enemy .kh-init-portrait::before { background: #8e1420; }
 .kh-init-hp {
   display: block;
-  width: 63px;
-  height: 6px;
+  width: 54px;
+  height: 5px;
   border-radius: 1px;
   background: #1d1c22;
   box-shadow: 0 0 0 1px #000;
@@ -791,19 +791,19 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-init-hp.is-unknown i { display: none; }
 /* Текущий ход: крупнее, красное свечение и ромб сверху */
 .kh-init.is-current .kh-init-portrait {
-  width: 90px;
-  height: 120px;
-  filter: drop-shadow(0 0 12px rgba(216, 50, 63, 0.85)) drop-shadow(0 4px 8px rgba(0, 0, 0, 0.7));
+  width: 77px;
+  height: 103px;
+  filter: drop-shadow(0 0 11px rgba(216, 50, 63, 0.85)) drop-shadow(0 4px 8px rgba(0, 0, 0, 0.7));
 }
-.kh-init.is-current .kh-init-hp { width: 81px; }
+.kh-init.is-current .kh-init-hp { width: 69px; }
 .kh-init.is-current::before {
   content: "";
   position: absolute;
-  top: -6px;
+  top: -5px;
   left: 50%;
   z-index: 1;
-  width: 13px;
-  height: 13px;
+  width: 11px;
+  height: 11px;
   transform: translateX(-50%) rotate(45deg);
   background: var(--kh-blood);
   box-shadow: 0 0 0 1px #000, 0 0 6px var(--kh-blood);
