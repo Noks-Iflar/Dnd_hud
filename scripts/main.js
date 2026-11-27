@@ -42,22 +42,29 @@ const GROUPS = [
 const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
 
 /**
- * Базовые действия из правил 2024 года, мини-сетка в группе «Действие».
- * status — id состояния Foundry, которое включается кнопкой, если такое состояние есть в мире.
- * skill — навык, проверка которого бросается сразу.
+ * Базовые действия из правил 2024 года (правый блок HUD). Клик — карточка в чат с кратким правилом
+ * и эффект на актёре; повторный клик снимает эффект.
+ * - effect: свой эффект HUD (имя, иконка из assets, изменения); status: состояние Foundry/dnd5e
+ *   (механику состояния даёт Automated Conditions 5e: атаки по «dodging» с помехой и т. п.).
+ * - expire: когда HUD сам снимет эффект в бою — "turnEnd" (конец хода) или "turnStart" (начало
+ *   следующего хода существа). Снимает клиент ГМа (модуля Times Up нет).
+ * - skill: проверка навыка; dc + onSuccess — что включить при успехе.
+ * - help: «Помощь» — эффект на выбранную цель (см. #basicAction).
  */
 const BASIC_ACTIONS = [
-  { id: "dash", label: "Рывок", icon: "icon-dash",
-    rule: "До конца хода скорость увеличивается на значение текущей скорости." },
-  { id: "disengage", label: "Отход", icon: "icon-disengage",
+  { id: "dash", label: "Рывок", icon: "icon-dash", expire: "turnEnd",
+    // В dnd5e 6.x все скорости умножаются на movement.multiplier (по умолчанию 1) после всех расчётов.
+    effect: { changes: [{ key: "system.attributes.movement.multiplier", mode: 1, value: "2" }] },
+    rule: "До конца хода скорость удвоена." },
+  { id: "disengage", label: "Отход", icon: "icon-disengage", expire: "turnEnd", effect: { changes: [] },
     rule: "До конца хода перемещение не провоцирует атаки." },
-  { id: "dodge", label: "Уклонение", icon: "icon-dodge", status: "dodging",
+  { id: "dodge", label: "Уклонение", icon: "icon-dodge", status: "dodging", expire: "turnStart",
     rule: "До начала следующего хода атаки по вам с помехой, спасброски Ловкости с преимуществом. Пропадает, если вы недееспособны или ваша скорость 0." },
-  { id: "help", label: "Помощь", icon: "icon-help",
-    rule: "Помощь союзнику в проверке характеристики или атаке по существу рядом с вами: следующий такой бросок союзника — с преимуществом." },
-  { id: "hide", label: "Засада", icon: "icon-hide", skill: "ste",
-    rule: "Проверка Ловкости (Скрытность) СЛ 15, нужно быть вне поля зрения врагов. При успехе вы невидимы, пока не выдадите себя." },
-  { id: "ready", label: "Подготовка", icon: "icon-ready",
+  { id: "help", label: "Помощь", icon: "icon-help", help: true,
+    rule: "Цель-враг: следующая атака союзника по ней — с преимуществом. Цель-союзник: его следующая проверка — с преимуществом. До начала вашего следующего хода." },
+  { id: "hide", label: "Засада", icon: "icon-hide", skill: "ste", dc: 15, onSuccess: "hiding",
+    rule: "Проверка Ловкости (Скрытность) СЛ 15, нужно быть вне поля зрения врагов. При успехе вы спрятались, пока не выдадите себя." },
+  { id: "ready", label: "Подготовка", icon: "icon-ready", expire: "turnStart", effect: { changes: [] },
     rule: "Выберите действие и условие. Когда условие наступит до вашего следующего хода, выполните действие реакцией." }
 ];
 
@@ -385,6 +392,89 @@ function movement_(actor, speed) {
   return { total, left, tracked: true, segments: Array.from({ length: count }, (_, i) => i < lit) };
 }
 
+/* ---------- Эффекты базовых действий ---------- */
+
+/** Сокет модуля через socketlib: эффект на чужом актёре создаёт клиент ГМа. */
+let socket = null;
+
+/** Эффекты, которые повесил HUD этой кнопкой (флаг khvor-hud.basic = id действия). */
+const basicEffects = (actor, id) => actor.effects.filter((e) => e.getFlag(MODULE_ID, "basic") === id);
+
+/** Активно ли действие: есть эффект HUD или (для состояний) само состояние на актёре. */
+function basicActive(actor, basic) {
+  return basicEffects(actor, basic.id).length > 0 || (basic.status && actor.statuses?.has(basic.status));
+}
+
+/** Участник боя для актёра (у несвязанного токена — по токену). */
+function combatantOf(actor, combat = game.combat) {
+  if (!combat) return null;
+  const tokenId = actor.token?.id;
+  return combat.combatants.find((c) => (tokenId ? c.tokenId === tokenId : c.actorId === actor.id)) ?? null;
+}
+
+/** Когда снять эффект: запоминаем бой, участника и момент (ход, в который эффект появился). */
+function expireFlag(actor, when) {
+  const combat = game.combat;
+  const combatant = combat?.started && when ? combatantOf(actor, combat) : null;
+  if (!combatant) return {};
+  return { expire: { combatId: combat.id, combatantId: combatant.id, when, round: combat.round, turn: combat.turn } };
+}
+
+/** Данные эффекта: состояние Foundry (dodging, hiding…) или свой эффект с иконкой из assets. */
+async function basicEffectData(actor, basic, { status, name, changes, flags = {} } = {}) {
+  let data;
+  const statusId = status ?? basic.status;
+  if (statusId && CONFIG.statusEffects.some((s) => s.id === statusId)) {
+    data = (await ActiveEffect.implementation.fromStatusEffect(statusId)).toObject();
+  } else {
+    data = { name: name ?? basic.label, img: `${ASSETS}/${basic.icon}.png`, changes: changes ?? basic.effect?.changes ?? [] };
+  }
+  data.origin = actor.uuid;
+  foundry.utils.mergeObject(data, { flags: { [MODULE_ID]: { basic: basic.id, ...expireFlag(actor, basic.expire), ...flags } } });
+  return data;
+}
+
+/** Создать эффект на актёре: свой — сразу, чужой — руками ГМа через socketlib. */
+async function createEffectOn(actor, data) {
+  if (actor.isOwner) return actor.createEmbeddedDocuments("ActiveEffect", [data]);
+  if (!socket || !game.users.activeGM) {
+    ui.notifications.warn("Нужен ГМ в игре и модуль socketlib, чтобы повесить эффект на чужое существо.");
+    return null;
+  }
+  return socket.executeAsGM("createEffect", actor.uuid, data);
+}
+
+/**
+ * Снять эффекты базовых действий, у которых вышел срок. Вызывается у ГМа при смене хода.
+ * turnEnd — ход сменился с того, в котором эффект появился; turnStart — снова наступил ход
+ * того же участника (но не тот же самый ход).
+ */
+async function expireBasicEffects(combat) {
+  for (const c of combat.combatants) {
+    const actor = c.actor;
+    if (!actor) continue;
+    const ids = actor.effects.filter((e) => {
+      const x = e.getFlag(MODULE_ID, "expire");
+      if (!x || x.combatId !== combat.id) return false;
+      const sameTurn = x.round === combat.round && x.turn === combat.turn;
+      if (x.when === "turnEnd") return !sameTurn;
+      if (x.when === "turnStart") return combat.combatant?.id === x.combatantId && !sameTurn;
+      return false;
+    }).map((e) => e.id);
+    if (ids.length) await actor.deleteEmbeddedDocuments("ActiveEffect", ids);
+  }
+}
+
+/** Бой закончился — снять все эффекты базовых действий этого боя. */
+async function clearCombatEffects(combat) {
+  for (const c of combat.combatants) {
+    const actor = c.actor;
+    if (!actor) continue;
+    const ids = actor.effects.filter((e) => e.getFlag(MODULE_ID, "expire")?.combatId === combat.id).map((e) => e.id);
+    if (ids.length) await actor.deleteEmbeddedDocuments("ActiveEffect", ids);
+  }
+}
+
 /* ---------- Правый блок ---------- */
 
 /**
@@ -555,20 +645,20 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       },
       ac: attr.ac?.value ?? "—",
       init: signed(attr.init?.total ?? attr.init?.mod ?? 0),
-      speed: movement.walk ?? 0,
+      speed: movement.speeds?.walk ?? movement.walk ?? 0,
       units: UNITS[movement.units] ?? movement.units ?? "",
       // У заклинателей — СЛ заклинаний, у остальных — пассивная внимательность.
       extra: spellDC
         ? { value: spellDC, label: "СЛ заклинаний", short: "СЛ закл." }
         : { value: sys.skills?.prc?.passive ?? "—", label: "Пассивная внимательность", short: "пасс. вним." },
-      move: movement_(actor, movement.walk ?? 0),
+      move: movement_(actor, movement.speeds?.walk ?? movement.walk ?? 0),
       modes: [
         { id: "advantage", label: "Преим.", cls: "adv" },
         { id: "normal", label: "Обычн.", cls: "" },
         { id: "disadvantage", label: "Помеха", cls: "dis" }
       ].map((m) => ({ ...m, active: m.id === rollMode })),
       canRest: actor.type === "character",
-      basic: BASIC_ACTIONS,
+      basic: BASIC_ACTIONS.map((b) => ({ ...b, active: basicActive(actor, b) })),
       // Концентрация: dnd5e вешает на актёра состояние «concentrating».
       concentrating: actor.statuses?.has(CONFIG.DND5E?.specialStatusEffects?.CONCENTRATING ?? "concentrating"),
       // Героическое вдохновение (правила 2024) — флажок system.attributes.inspiration, только у персонажей.
@@ -744,16 +834,60 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       return;
     }
 
+    // Повторный клик — снять эффект (свой эффект HUD или состояние).
+    if (basicActive(actor, basic)) {
+      const ids = basicEffects(actor, basic.id).map((e) => e.id);
+      if (ids.length) await actor.deleteEmbeddedDocuments("ActiveEffect", ids);
+      else if (basic.status) await actor.toggleStatusEffect(basic.status, { active: false });
+      return;
+    }
+
+    // «Помощь» — нужна ровно одна цель; эффект вешается на неё (через Midi-QOL и DAE).
+    let note = "";
+    if (basic.help) {
+      const targets = [...game.user.targets];
+      if (targets.length !== 1) {
+        ui.notifications.warn("Помощь: выберите одну цель (клавиша T) — врага, по которому атакует союзник, или союзника.");
+        return;
+      }
+      const tok = targets[0];
+      const mine = actor.token ?? actor.getActiveTokens()[0]?.document;
+      const enemy = tok.document.disposition !== mine?.disposition;
+      // Midi-QOL: grants.advantage.attack.all — атаки по цели с преимуществом; advantage.ability.check.all —
+      // проверки цели с преимуществом. DAE снимает эффект после первой такой атаки или проверки
+      // (specialDuration), HUD — в начале вашего следующего хода, если не пригодился.
+      const data = await basicEffectData(actor, { ...basic, expire: null }, {
+        name: enemy ? `Помощь против (${actor.name})` : `Помощь (${actor.name})`,
+        changes: [{ key: enemy ? "flags.midi-qol.grants.advantage.attack.all" : "flags.midi-qol.advantage.ability.check.all", mode: 0, value: "1" }],
+        flags: expireFlag(actor, "turnStart")
+      });
+      foundry.utils.setProperty(data, "flags.dae.specialDuration", enemy ? ["isAttacked"] : ["isCheck", "isSkill"]);
+      await createEffectOn(tok.actor, data);
+      note = enemy ? `Цель: <b>${tok.name}</b> — следующая атака союзника по ней с преимуществом.` : `Союзник: <b>${tok.name}</b> — его следующая проверка с преимуществом.`;
+    }
+
+    // Засада — проверка Скрытности; при 15+ — состояние «прячется».
+    if (basic.skill) {
+      const rolls = await actor.rollSkill({ skill: basic.skill, event });
+      const roll = Array.isArray(rolls) ? rolls[0] : rolls;
+      if (!roll) return; // бросок отменили
+      if (roll.total >= basic.dc) {
+        await createEffectOn(actor, await basicEffectData(actor, basic, { status: basic.onSuccess }));
+        note = `Скрытность ${roll.total} — спрятался (СЛ поиска ${roll.total}).`;
+      } else note = `Скрытность ${roll.total} — не удалось (нужно ${basic.dc}).`;
+    }
+
+    // Рывок, Отход, Уклонение, Подготовка — эффект на себя.
+    if (basic.effect || (basic.status && !basic.skill)) {
+      await createEffectOn(actor, await basicEffectData(actor, basic));
+    }
+
     await ChatMessage.create({
       speaker: ChatMessage.getSpeaker({ actor }),
-      content: `<div class="kh-chat-basic"><h3>${basic.label}</h3><p>${basic.rule}</p></div>`
+      content: `<div class="kh-chat-basic"><h3>${basic.label}</h3><p>${basic.rule}</p>${note ? `<p>${note}</p>` : ""}</div>`
     });
-
-    const status = basic.status && CONFIG.statusEffects.find((s) => s.id === basic.status);
-    if (status) await actor.toggleStatusEffect(status.id);
-
-    if (basic.skill) await actor.rollSkill({ skill: basic.skill, event });
   }
+
 
   static #setTab(event, target) {
     this.panel.tab = target.dataset.tab;
@@ -857,6 +991,15 @@ Hooks.once("init", () => {
   });
 });
 
+// socketlib: эффект на чужом актёре (например, «Помощь» на врага) создаёт клиент ГМа.
+Hooks.once("socketlib.ready", () => {
+  socket = globalThis.socketlib.registerModule(MODULE_ID);
+  socket.register("createEffect", async (uuid, data) => {
+    const actor = await fromUuid(uuid);
+    return actor?.createEmbeddedDocuments("ActiveEffect", [data]);
+  });
+});
+
 Hooks.once("ready", () => {
   const hud = new KhvorHud();
   game.modules.get(MODULE_ID).api = { hud };
@@ -871,6 +1014,15 @@ Hooks.once("ready", () => {
     "createActiveEffect", "updateActiveEffect", "deleteActiveEffect"
   ];
   for (const hook of hooks) Hooks.on(hook, refresh);
+
+  // Сроки эффектов базовых действий: снимает только активный ГМ, чтобы не удалять дважды.
+  Hooks.on("updateCombat", (combat, changes) => {
+    if (!("turn" in changes || "round" in changes) || !game.users.activeGM?.isSelf) return;
+    expireBasicEffects(combat);
+  });
+  Hooks.on("deleteCombat", (combat) => {
+    if (game.users.activeGM?.isSelf) clearCombatEffects(combat);
+  });
   // Свернули или развернули боковую панель, изменили размер окна — пересчитать место и столбцы.
   Hooks.on("collapseSidebar", () => setTimeout(refresh, 300)); // после анимации сворачивания
   window.addEventListener("resize", refresh);

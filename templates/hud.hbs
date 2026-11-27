@@ -152,7 +152,7 @@
     </div>
     <div class="kh-basic" role="group" aria-label="Базовые действия">
       {{#each basic}}
-      <button type="button" class="kh-basic-btn" data-action="basicAction" data-basic="{{id}}" data-tooltip="{{label}}" aria-label="{{label}}">
+      <button type="button" class="kh-basic-btn {{#if active}}is-active{{/if}}" data-action="basicAction" data-basic="{{id}}" data-tooltip="{{label}}{{#if active}} — активно, клик снимет{{/if}}" aria-label="{{label}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}">
         <img src="{{@root.assets}}/{{icon}}.png" alt="">
       </button>
       {{/each}}

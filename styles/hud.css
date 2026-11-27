@@ -674,3 +674,8 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 }
 .kh-end-turn:hover:not(:disabled) { background: linear-gradient(#52141e, #2a0c12); box-shadow: 0 0 0 1px #000, 0 0 14px rgba(216, 50, 63, 0.6); }
 .kh-end-turn.is-waiting { border-color: var(--kh-iron); background: #121116; box-shadow: 0 0 0 1px #000; color: #6e6a78; cursor: default; }
+/* Базовое действие с активным эффектом (Рывок в этот ход, Уклонение до следующего хода…) */
+.kh-basic-btn.is-active {
+  box-shadow: 0 0 0 2px #ffa64d, 0 0 8px rgba(255, 166, 77, 0.7);
+  filter: brightness(1.2);
+}

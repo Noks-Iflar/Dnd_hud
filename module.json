@@ -2,9 +2,11 @@
   "id": "khvor-hud",
   "title": "HUD Хвора",
   "description": "Боевой HUD в стиле тёмного фэнтези для кампании «Хвор»: сфера здоровья, портрет, характеристики, способности.",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "authors": [
-    { "name": "Нокс" }
+    {
+      "name": "Нокс"
+    }
   ],
   "compatibility": {
     "minimum": "13",
@@ -12,9 +14,24 @@
   },
   "relationships": {
     "systems": [
-      { "id": "dnd5e", "type": "system" }
+      {
+        "id": "dnd5e",
+        "type": "system"
+      }
+    ],
+    "recommends": [
+      {
+        "id": "socketlib",
+        "type": "module",
+        "reason": "Помощь вешает эффект на чужое существо руками ГМа"
+      }
     ]
   },
-  "esmodules": ["scripts/main.js"],
-  "styles": ["styles/hud.css"]
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/hud.css"
+  ],
+  "socket": true
 }

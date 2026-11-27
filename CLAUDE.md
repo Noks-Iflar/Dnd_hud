@@ -14,7 +14,9 @@
 
 - Foundry VTT **V14** (14.370), система **D&D 5e 6.1.1**, правила 2024 года, русская локализация (модули Russian Translation и Babele).
 - **Midi-QOL 14.7.1 включён** (поддерживает dnd5e 6.1.x; требует DAE ≥ 14.6.10, DAE обновлён). Автоматизацию базовых действий строить с учётом Midi: не дублировать то, что Midi делает сам (уклонение, помощь, преимущество/помеха через флаги `flags.midi-qol.*`). Встроенные режимы броска dnd5e (`abilities.*.check.roll.mode` и т. п., 1 — преимущество, −1 — помеха) тоже доступны.
-- Важные соседние модули: Midi-QOL, DAE, Automated Conditions 5e, Simple Cover 5e, Sequencer, JB2A (Patreon), Automated Animations, Token Magic FX, Tidy 5e Sheets, DFreds Convenient Effects, Item Piles, Glyph.
+- Важные соседние модули: Midi-QOL, DAE, Automated Conditions 5e (AC5e, даёт механику состояниям: атаки по `dodging` с помехой и т. п.), socketlib, libWrapper, Simple Cover 5e, Sequencer, JB2A (Patreon), Automated Animations, Token Magic FX, Tidy 5e Sheets, Item Piles, Glyph. **Нет**: Times Up, DFreds Convenient Effects.
+- Состояния в мире (`CONFIG.statusEffects`): antimagic, burrowing, concentrating, coverHalf, coverThreeQuarters, coverTotal, dead, dodging, ethereal, flying, hiding, hovering, marked, sleeping, stable, bleeding, blinded, burning, charmed, cursed, dehydration, deafened, diseased, exhaustion, falling, frightened, grappled, incapacitated, invisible, malnutrition, paralyzed, petrified, poisoned, prone, restrained, silenced, stunned, suffocation, surprised, transformed, unconscious, encumbered, heavilyEncumbered, exceedingCarryingCapacity, bonusaction, reaction, invisibleBrief, flanking, flanked.
+- Скорость в dnd5e 6.x: источник `attributes.movement.speeds.walk` (формула-строка), `movement.walk` — устаревший геттер на `speeds.walk`; все скорости умножаются на `movement.multiplier` (не хранится, по умолчанию 1) после бонуса `movement.bonus`. Удвоить скорость эффектом — `system.attributes.movement.multiplier`, MULTIPLY, 2 (по исходникам dnd5e release-6.1.1).
 - Кампания: 3 игрока 9-го уровня (Дайдэн — дроу, бард, ставший колдуном; Муарен — плут; Мерик — воин). У ГМа много NPC, в том числе существа с Хвором (магической заразой мира).
 
 ## Принципы HUD (утверждены Ноксом)
@@ -128,13 +130,21 @@ tools/cut.py           нарезка листов Gemini на отдельны�
 - Средняя панель шире: `LEFT_BLOCK_WIDTH` 485, `RIGHT_RESERVE` 210 → на 1920 px с открытым чатом 12 плиток в строке.
 - Фильтр по типу действия без новой строки: подпись группы («◆ Бонусное») — кнопка `setGroup`. Клик оставляет только эту группу, остальные сворачиваются в приглушённые подписи (`stub`), повторный клик — все группы. Сочетается с вкладками (например, «Заклинания» + «Бонусное»). Состояние `hud.panel.group`, сбрасывается при смене актёра.
 
+Автоматизация базовых действий (v0.2.0, ждёт проверки Нокса): клик — эффект + карточка в чат, повторный клик снимает эффект; активная кнопка обведена оранжевым.
+- Рывок — свой эффект `movement.multiplier` ×2 до конца хода; полоска движения покажет удвоенную скорость (HUD читает `movement.speeds.walk`).
+- Отход — значок-эффект до конца хода. Подготовка — значок-эффект до начала следующего хода.
+- Уклонение — состояние `dodging` (механику даёт AC5e) до начала следующего хода.
+- Засада — `actor.rollSkill({ skill: "ste" })`, при итоге ≥ 15 — состояние `hiding` (без срока), итог пишется в карточку как СЛ поиска.
+- Помощь — нужна ровно одна цель (T). Цель-враг: эффект с `flags.midi-qol.grants.advantage.attack.all`, `flags.dae.specialDuration: ["isAttacked"]`; цель-союзник: `flags.midi-qol.advantage.ability.check.all`, `["isCheck", "isSkill"]`. Плюс снятие HUD в начале следующего хода помощника. Эффект на чужом актёре создаёт ГМ через socketlib (`module.json`: `"socket": true`, socketlib в recommends; `socket.executeAsGM("createEffect", uuid, data)`).
+- Сроки: флаг `flags.khvor-hud.expire = { combatId, combatantId, when, round, turn }`. `expireBasicEffects()` на `updateCombat` (смена хода/раунда) и `clearCombatEffects()` на `deleteCombat` выполняет только `game.users.activeGM`. Вне боя эффекты без срока — снимаются повторным кликом.
+
 ## Дальше, по порядку
 
 1. **Центральная панель способностей**: собрать предметы, заклинания и умения актёра по типу активации, плитки в `slot-frame` с `item.img`, счётчики зарядов, ячейки заклинаний и договора, вкладки-фильтры, клик — использование, режим броска передаётся в бросок.
 2. **Компактная подсказка** при наведении, полное описание по Shift.
 3. **Экономия действий**: ромбы гаснут при трате, сброс в начале хода.
 4. **Ряд эффектов** над панелью с крестиками.
-5. **Правый блок**: режим броска, базовые действия и «Завершить ход» — сделано, см. выше. Дальше — автоматизация базовых действий (рывок удваивает скорость и т. п.).
+5. **Правый блок**: режим броска, базовые действия и «Завершить ход» — сделано, см. выше. Автоматизация базовых действий — см. выше.
 6. **Полоса инициативы** сверху.
 7. **Окно навыков**: характеристики, спасброски, 18 навыков, пассивная внимательность.
 8. **Режим ГМа для NPC**: легендарные действия, сопротивление, перезарядка, скрытые броски.
