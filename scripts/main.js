@@ -392,6 +392,41 @@ function movement_(actor, speed) {
   return { total, left, tracked: true, segments: Array.from({ length: count }, (_, i) => i < lit) };
 }
 
+/* ---------- Режим броска: преимущество / помеха на следующий бросок ---------- */
+
+/** Вернуть переключатель на «Обычн.» (после броска, к которому он применился). */
+async function resetRollMode() {
+  if (game.settings.get(MODULE_ID, "rollMode") === "normal") return;
+  await game.settings.set(MODULE_ID, "rollMode", "normal");
+  game.modules.get(MODULE_ID).api?.hud?.render();
+}
+
+/** Актёр, который делает бросок: subject — сам актёр (проверки, спасброски) или активность (атака). */
+function rollActor(config) {
+  const subject = config?.subject;
+  if (!subject) return null;
+  if (subject instanceof Actor) return subject;
+  return subject.actor ?? subject.item?.actor ?? subject.parent?.actor ?? null;
+}
+
+/**
+ * Хук dnd5e перед броском d20 (атака, проверка, спасбросок, навык, инструмент, спасбросок от смерти,
+ * концентрация). Если на переключателе «Преим.» или «Помеха» и бросает актёр, которого показывает HUD,
+ * ставим config.advantage / config.disadvantage (dnd5e объединяет их с клавишами и эффектами)
+ * и возвращаем переключатель на «Обычн.».
+ */
+function applyRollMode(config) {
+  if (!config || config.khvorRollMode) return;
+  const mode = game.settings.get(MODULE_ID, "rollMode");
+  if (mode === "normal") return;
+  const hudActor = game.modules.get(MODULE_ID).api?.hud?.actor;
+  const actor = rollActor(config);
+  if (!hudActor || !actor || actor.uuid !== hudActor.uuid) return;
+  config[mode] = true;
+  config.khvorRollMode = true; // один бросок вызывает несколько хуков — применяем один раз
+  resetRollMode();
+}
+
 /* ---------- Эффекты базовых действий ---------- */
 
 /** Сокет модуля через socketlib: эффект на чужом актёре создаёт клиент ГМа. */
@@ -653,9 +688,9 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
         : { value: sys.skills?.prc?.passive ?? "—", label: "Пассивная внимательность", short: "пасс. вним." },
       move: movement_(actor, movement.speeds?.walk ?? movement.walk ?? 0),
       modes: [
-        { id: "advantage", label: "Преим.", cls: "adv" },
-        { id: "normal", label: "Обычн.", cls: "" },
-        { id: "disadvantage", label: "Помеха", cls: "dis" }
+        { id: "advantage", label: "Преим.", cls: "adv", hint: "Следующий бросок — с преимуществом" },
+        { id: "normal", label: "Обычн.", cls: "", hint: "Обычный бросок" },
+        { id: "disadvantage", label: "Помеха", cls: "dis", hint: "Следующий бросок — с помехой" }
       ].map((m) => ({ ...m, active: m.id === rollMode })),
       canRest: actor.type === "character",
       basic: BASIC_ACTIONS.map((b) => ({ ...b, active: basicActive(actor, b) })),
@@ -817,7 +852,14 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       ui.notifications.warn("Способность не найдена. Попробуйте ещё раз.");
       return this.render();
     }
-    return activity.use({ event });
+    // Режим броска «Преим. / Помеха» из правого блока — на этот бросок атаки (Midi-QOL берёт midiOptions),
+    // потом переключатель возвращается на «Обычн.».
+    const mode = game.settings.get(MODULE_ID, "rollMode");
+    const usage = { event };
+    if (mode !== "normal") usage.midiOptions = { [mode]: true };
+    const result = await activity.use(usage);
+    if (mode !== "normal" && activity.type === "attack") await resetRollMode();
+    return result;
   }
 
   /**
@@ -1020,6 +1062,11 @@ Hooks.once("ready", () => {
     "createActiveEffect", "updateActiveEffect", "deleteActiveEffect"
   ];
   for (const hook of hooks) Hooks.on(hook, refresh);
+
+  // Режим броска: хуки dnd5e 6.x перед бросками d20 (preRollD20TestV2 — проверки, спасброски, навыки,
+  // инструменты, смерть, концентрация; preRollAttackV2 — атаки).
+  Hooks.on("dnd5e.preRollD20TestV2", (config) => applyRollMode(config));
+  Hooks.on("dnd5e.preRollAttackV2", (config) => applyRollMode(config));
 
   // Сроки эффектов базовых действий: снимает только активный ГМ, чтобы не удалять дважды.
   Hooks.on("updateCombat", (combat, changes) => {

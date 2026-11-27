@@ -147,7 +147,7 @@
   <div class="kh-right">
     <div class="kh-seg" role="group" aria-label="Режим броска">
       {{#each modes}}
-      <button type="button" class="kh-seg-btn {{cls}} {{#if active}}active{{/if}}" data-action="setRollMode" data-mode="{{id}}" aria-pressed="{{active}}">{{label}}</button>
+      <button type="button" class="kh-seg-btn {{cls}} {{#if active}}active{{/if}}" data-action="setRollMode" data-mode="{{id}}" data-tooltip="{{hint}}" aria-pressed="{{active}}">{{label}}</button>
       {{/each}}
     </div>
     <div class="kh-basic" role="group" aria-label="Базовые действия">
