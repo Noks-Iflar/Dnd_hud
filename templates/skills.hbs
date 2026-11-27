@@ -1,0 +1,34 @@
+<div class="kh-skills">
+{{#if actor}}
+  <header class="kh-skills-head">
+    <h2>Проверки и навыки</h2>
+    <span class="kh-skills-name">{{name}}</span>
+    <span class="kh-skills-passive">Пассивная внимательность <b>{{passive}}</b></span>
+    <button type="button" class="kh-x" data-action="closeSkills" data-tooltip="Закрыть" aria-label="Закрыть">×</button>
+  </header>
+
+  {{!-- Характеристики: модификатор — проверка, «спас» — спасбросок (подсвечен при владении) --}}
+  <div class="kh-abls">
+    {{#each abilities}}
+    <div class="kh-abl">
+      <button type="button" class="kh-abl-check" data-action="rollCheck" data-ability="{{key}}" data-tooltip="Проверка: {{label}}" aria-label="Проверка: {{label}} {{mod}}">
+        <span class="kh-abl-abbr">{{abbr}}</span>
+        <span class="kh-abl-mod">{{mod}}</span>
+      </button>
+      <button type="button" class="kh-abl-save {{#if saveProf}}is-prof{{/if}}" data-action="rollSave" data-ability="{{key}}" data-tooltip="Спасбросок: {{label}}{{#if saveProf}} (владение){{/if}}" aria-label="Спасбросок: {{label}} {{save}}">спас {{save}}</button>
+    </div>
+    {{/each}}
+  </div>
+
+  {{!-- Навыки по алфавиту в три столбца; ромбик — владение (половина / владение / компетентность) --}}
+  <div class="kh-skill-list">
+    {{#each skills}}
+    <button type="button" class="kh-skill {{profClass}}" data-action="rollSkill" data-skill="{{key}}" data-tooltip="{{label}} ({{abilityLabel}}){{#if profLabel}} · {{profLabel}}{{/if}} · пассивная {{passive}}" aria-label="{{label}} {{total}}">
+      <span class="kh-skill-prof"></span>
+      <span class="kh-skill-name">{{label}} <small>{{abbr}}</small></span>
+      <span class="kh-skill-total">{{total}}</span>
+    </button>
+    {{/each}}
+  </div>
+{{/if}}
+</div>

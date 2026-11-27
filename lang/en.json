@@ -1,0 +1,21 @@
+{
+  "KHVOR": {
+    "Settings": {
+      "hidePlayers": {
+        "name": "Hide the player list",
+        "hint": "While the HUD is open, the player list in the bottom-left corner is hidden: the HUD takes its place."
+      },
+      "hideHotbar": {
+        "name": "Hide the macro hotbar",
+        "hint": "While the HUD is open, the standard macro hotbar is hidden so they do not overlap."
+      },
+      "showInitiative": {
+        "name": "Initiative bar",
+        "hint": "Show the HUD initiative bar at the top of the screen during combat."
+      }
+    },
+    "Status": {
+      "khvor": "Khvor"
+    }
+  }
+}

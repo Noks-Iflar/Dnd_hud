@@ -392,6 +392,184 @@ function movement_(actor, speed) {
   return { total, left, tracked: true, segments: Array.from({ length: count }, (_, i) => i < lit) };
 }
 
+/* ---------- Режим броска: преимущество / помеха на следующий бросок ---------- */
+
+/** Вернуть переключатель на «Обычн.» (после броска, к которому он применился). */
+async function resetRollMode() {
+  if (game.settings.get(MODULE_ID, "rollMode") === "normal") return;
+  await game.settings.set(MODULE_ID, "rollMode", "normal");
+  game.modules.get(MODULE_ID).api?.hud?.render();
+}
+
+/** Актёр, который делает бросок: subject — сам актёр (проверки, спасброски) или активность (атака). */
+function rollActor(config) {
+  const subject = config?.subject;
+  if (!subject) return null;
+  if (subject instanceof Actor) return subject;
+  return subject.actor ?? subject.item?.actor ?? subject.parent?.actor ?? null;
+}
+
+/**
+ * Хук dnd5e перед броском d20 (атака, проверка, спасбросок, навык, инструмент, спасбросок от смерти,
+ * концентрация). Если на переключателе «Преим.» или «Помеха» и бросает актёр, которого показывает HUD,
+ * ставим config.advantage / config.disadvantage (dnd5e объединяет их с клавишами и эффектами)
+ * и возвращаем переключатель на «Обычн.».
+ */
+function applyRollMode(config) {
+  if (!config || config.khvorRollMode) return;
+  const mode = game.settings.get(MODULE_ID, "rollMode");
+  if (mode === "normal") return;
+  const hudActor = game.modules.get(MODULE_ID).api?.hud?.actor;
+  const actor = rollActor(config);
+  if (!hudActor || !actor || actor.uuid !== hudActor.uuid) return;
+  config[mode] = true;
+  config.khvorRollMode = true; // один бросок вызывает несколько хуков — применяем один раз
+  resetRollMode();
+}
+
+/* ---------- Ряд эффектов над левой панелью ---------- */
+
+/** Сколько раундов осталось у эффекта (null — без срока или неизвестно). */
+function effectRounds(effect) {
+  try {
+    const d = effect.duration;
+    if (!d || !Number.isFinite(d.remaining)) return null;
+    if (d.type === "turns") return Math.max(0, Math.ceil(d.remaining));
+    if (d.type === "seconds") return Math.max(0, Math.ceil(d.remaining / (CONFIG.time?.roundTime || 6)));
+  } catch {
+    // у эффекта нет понятной длительности
+  }
+  return null;
+}
+
+/** Текст подсказки без HTML: описание эффекта бывает с разметкой. */
+const plainText = (html) => (html ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+
+/** Название заклинания, на котором держится концентрация (по origin эффекта), иначе имя эффекта. */
+function concentrationName(effect) {
+  try {
+    const origin = effect.origin ? fromUuidSync(effect.origin) : null;
+    const item = origin?.item ?? origin;
+    if (item?.name) return ruName(item.name);
+  } catch {
+    // origin в компендиуме или удалён
+  }
+  return ruName(effect.getFlag?.("dnd5e", "item")?.data?.name ?? effect.name);
+}
+
+/**
+ * Эффекты для ряда над панелью: концентрация отдельно (плашки), остальное — временные эффекты актёра
+ * (состояния, эффекты с длительностью) и эффекты базовых действий HUD. Постоянные эффекты от предметов
+ * (броня, особенности) не показываем.
+ */
+function effectsRow(actor) {
+  const conc = actor.concentration?.effects ?? new Set();
+  const concentration = [...conc].map((e) => ({ uuid: e.uuid, name: concentrationName(e), rounds: effectRounds(e) }));
+  const seen = new Set([...conc].map((e) => e.uuid));
+  const list = [];
+  for (const e of actor.temporaryEffects ?? []) {
+    if (seen.has(e.uuid) || e.statuses?.has("concentrating")) continue;
+    seen.add(e.uuid);
+    const rounds = effectRounds(e);
+    const desc = plainText(e.description);
+    list.push({ uuid: e.uuid, name: e.name, img: e.img, rounds, tooltip: [e.name, rounds ? `${rounds} р.` : "", desc].filter(Boolean).join(" · ") });
+  }
+  for (const e of actor.effects) {
+    if (seen.has(e.uuid) || !e.getFlag(MODULE_ID, "basic") || e.disabled) continue;
+    list.push({ uuid: e.uuid, name: e.name, img: e.img, rounds: null, tooltip: e.name });
+  }
+  return {
+    show: concentration.length > 0 || list.length > 0,
+    concentration,
+    list,
+    // Снимать эффекты может владелец актёра (игрок — своего персонажа) и ГМ.
+    canRemove: actor.isOwner
+  };
+}
+
+/* ---------- Режим ГМа: легендарные действия и сопротивление, видимость бросков ---------- */
+
+/** Ромбы ресурса { max, spent } (resources.legact / legres): true — есть, false — потрачено. */
+function resourceGems(res) {
+  const max = Number(res?.max) || 0;
+  if (max <= 0) return null;
+  const value = Math.clamp(max - (Number(res.spent) || 0), 0, max);
+  return { max, value, gems: Array.from({ length: max }, (_, i) => i < value) };
+}
+
+/** Активность «Легендарное сопротивление»: тратит resources.legres.value (как у дракона и Урдрака). */
+function resistanceActivity(actor) {
+  for (const item of actor.items) {
+    for (const activity of item.system.activities ?? []) {
+      if (activity.consumption?.targets?.some((t) => t.target === "resources.legres.value")) return activity;
+    }
+  }
+  return null;
+}
+
+/** Ключ настройки режима бросков Foundry, если он есть (в V14 мог измениться — тогда переключатель скрыт). */
+function rollModeSettingKey() {
+  return game.settings.settings.has("core.rollMode") ? "rollMode" : null;
+}
+
+/** Переключатель «Открыто / Скрыто» для ГМа: публичные броски или только ГМу. */
+function visibilityModes() {
+  const key = rollModeSettingKey();
+  if (!game.user.isGM || !key) return null;
+  const modes = CONST.DICE_ROLL_MODES ?? { PUBLIC: "publicroll", PRIVATE: "gmroll" };
+  const current = game.settings.get("core", key);
+  return [
+    { mode: modes.PUBLIC, label: "Открыто", hint: "Броски видят все", active: current === modes.PUBLIC },
+    { mode: modes.PRIVATE, label: "Скрыто", hint: "Броски видит только ГМ", active: current !== modes.PUBLIC }
+  ];
+}
+
+/* ---------- Экономия действий ---------- */
+
+/** Ресурсы хода: действие, бонусное действие, реакция (ключи совпадают с группами панели). */
+const ECONOMY_KEYS = ["action", "bonus", "reaction"];
+
+/**
+ * Что потрачено в этот ход. null — актёр не участвует в начатом бою (ромбы просто горят).
+ * Свой учёт — флаг khvor-hud.economy { combatId, action, bonus, reaction } (сколько раз потрачено);
+ * плюс отметки Midi-QOL: флаги midi-qol.actions.bonus / .reaction и состояния bonusaction / reaction.
+ */
+function economyState(actor) {
+  const combat = game.combat;
+  if (!combat?.started || !combatantOf(actor, combat)) return null;
+  const flag = actor.getFlag(MODULE_ID, "economy");
+  const own = flag?.combatId === combat.id ? flag : {};
+  const midi = actor.getFlag("midi-qol", "actions") ?? {};
+  return {
+    action: (own.action ?? 0) > 0,
+    bonus: (own.bonus ?? 0) > 0 || !!midi.bonus || !!actor.statuses?.has("bonusaction"),
+    reaction: (own.reaction ?? 0) > 0 || !!midi.reaction || !!actor.statuses?.has("reaction")
+  };
+}
+
+/** Отметить трату (delta = 1) или вернуть (delta = −1) ресурс хода. Только в бою и только своему актёру. */
+async function spendEconomy(actor, key, delta = 1) {
+  const combat = game.combat;
+  if (!ECONOMY_KEYS.includes(key) || !actor?.isOwner || !combat?.started || !combatantOf(actor, combat)) return;
+  const flag = actor.getFlag(MODULE_ID, "economy");
+  const own = flag?.combatId === combat.id ? { ...flag } : { combatId: combat.id };
+  own[key] = Math.max(0, (own[key] ?? 0) + delta);
+  const update = { [`flags.${MODULE_ID}.economy`]: own };
+  // Возвращая бонусное действие или реакцию, снимаем и отметку Midi, иначе ромб останется пустым.
+  if (delta < 0 && key !== "action") update[`flags.midi-qol.actions.${key}`] = false;
+  await actor.update(update);
+  if (delta < 0 && key !== "action") {
+    const status = key === "bonus" ? "bonusaction" : "reaction";
+    if (actor.statuses?.has(status)) await actor.toggleStatusEffect(status, { active: false });
+  }
+}
+
+/** Начало хода участника — снова доступны действие, бонусное действие и реакция (делает ГМ). */
+async function resetEconomy(combat) {
+  const actor = combat.combatant?.actor;
+  if (actor?.getFlag(MODULE_ID, "economy")) await actor.unsetFlag(MODULE_ID, "economy");
+}
+
 /* ---------- Эффекты базовых действий ---------- */
 
 /** Сокет модуля через socketlib: эффект на чужом актёре создаёт клиент ГМа. */
@@ -567,6 +745,11 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     actions: {
       openSheet: KhvorHud.#openSheet,
       setGroup: KhvorHud.#setGroup,
+      toggleEconomy: KhvorHud.#toggleEconomy,
+      removeEffect: KhvorHud.#removeEffect,
+      spendLegendary: KhvorHud.#spendLegendary,
+      useResistance: KhvorHud.#useResistance,
+      setVisibility: KhvorHud.#setVisibility,
       endTurn: KhvorHud.#endTurn,
       rollInitiative: KhvorHud.#rollInitiative,
       openSkills: KhvorHud.#openSkills,
@@ -612,6 +795,9 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       rows: game.settings.get(MODULE_ID, "tallPanel") ? 2 : 1,
       columns: pageColumns()
     });
+    // Ромбы экономии действий у групп «Действие / Бонусное / Реакция».
+    const economy = economyState(actor);
+    for (const g of abilities.groups) g.spent = !!economy?.[g.key];
     // Запоминаем то, что реально показали: вкладка могла исчезнуть, страниц могло стать меньше.
     this.panel.tab = abilities.tab;
     this.panel.group = abilities.group;
@@ -653,9 +839,9 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
         : { value: sys.skills?.prc?.passive ?? "—", label: "Пассивная внимательность", short: "пасс. вним." },
       move: movement_(actor, movement.speeds?.walk ?? movement.walk ?? 0),
       modes: [
-        { id: "advantage", label: "Преим.", cls: "adv" },
-        { id: "normal", label: "Обычн.", cls: "" },
-        { id: "disadvantage", label: "Помеха", cls: "dis" }
+        { id: "advantage", label: "Преим.", cls: "adv", hint: "Следующий бросок — с преимуществом" },
+        { id: "normal", label: "Обычн.", cls: "", hint: "Обычный бросок" },
+        { id: "disadvantage", label: "Помеха", cls: "dis", hint: "Следующий бросок — с помехой" }
       ].map((m) => ({ ...m, active: m.id === rollMode })),
       canRest: actor.type === "character",
       basic: BASIC_ACTIONS.map((b) => ({ ...b, active: basicActive(actor, b) })),
@@ -671,6 +857,11 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
         failure: [0, 1, 2].map((i) => i < (attr.death?.failure ?? 0))
       } : null,
       panel: abilities,
+      inCombat: !!economy,
+      effects: effectsRow(actor),
+      legact: resourceGems(sys.resources?.legact),
+      legres: resourceGems(sys.resources?.legres),
+      visibility: visibilityModes(),
       endTurn: endTurnState(actor),
       slots: spellSlots(actor)
     };
@@ -817,7 +1008,14 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       ui.notifications.warn("Способность не найдена. Попробуйте ещё раз.");
       return this.render();
     }
-    return activity.use({ event });
+    // Режим броска «Преим. / Помеха» из правого блока — на этот бросок атаки (Midi-QOL берёт midiOptions),
+    // потом переключатель возвращается на «Обычн.».
+    const mode = game.settings.get(MODULE_ID, "rollMode");
+    const usage = { event };
+    if (mode !== "normal") usage.midiOptions = { [mode]: true };
+    const result = await activity.use(usage);
+    if (mode !== "normal" && activity.type === "attack") await resetRollMode();
+    return result;
   }
 
   /**
@@ -886,6 +1084,8 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       speaker: ChatMessage.getSpeaker({ actor }),
       content: `<div class="kh-chat-basic"><h3>${basic.label}</h3><p>${basic.rule}</p>${note ? `<p>${note}</p>` : ""}</div>`
     });
+    // Базовое действие тратит «Действие» хода.
+    await spendEconomy(actor, "action");
   }
 
 
@@ -893,6 +1093,57 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     this.panel.tab = target.dataset.tab;
     this.panel.page = 0;
     this.render();
+  }
+
+  /** Ромб легендарного действия: горящий — потратить, пустой — вернуть. */
+  static async #spendLegendary(event, target) {
+    const actor = this.actor;
+    const res = actor?.system.resources?.legact;
+    if (!actor?.isOwner || !res) return;
+    const spent = Math.clamp((Number(res.spent) || 0) + (target.dataset.on ? 1 : -1), 0, Number(res.max) || 0);
+    return actor.update({ "system.resources.legact.spent": spent });
+  }
+
+  /**
+   * Ромб легендарного сопротивления: горящий — использовать способность сопротивления
+   * (dnd5e сам спишет заряд и напишет в чат), если её нет — просто потратить; пустой — вернуть.
+   */
+  static async #useResistance(event, target) {
+    const actor = this.actor;
+    const res = actor?.system.resources?.legres;
+    if (!actor?.isOwner || !res) return;
+    if (target.dataset.on) {
+      const activity = resistanceActivity(actor);
+      if (activity) return activity.use({ event });
+    }
+    const spent = Math.clamp((Number(res.spent) || 0) + (target.dataset.on ? 1 : -1), 0, Number(res.max) || 0);
+    return actor.update({ "system.resources.legres.spent": spent });
+  }
+
+  /** «Открыто / Скрыто» (только ГМ): режим бросков Foundry. */
+  static async #setVisibility(event, target) {
+    const key = rollModeSettingKey();
+    if (!game.user.isGM || !key) return;
+    await game.settings.set("core", key, target.dataset.mode);
+    this.render();
+  }
+
+  /** Крестик на эффекте: снять эффект; у концентрации — прервать её средствами dnd5e. */
+  static async #removeEffect(event, target) {
+    const actor = this.actor;
+    if (!actor?.isOwner) return;
+    const effect = await fromUuid(target.dataset.uuid);
+    if (!effect) return;
+    if (target.dataset.conc && typeof actor.endConcentration === "function") return actor.endConcentration(effect);
+    return effect.delete();
+  }
+
+  /** Клик по ромбу группы в бою: отметить действие потраченным или вернуть. */
+  static async #toggleEconomy(event, target) {
+    const actor = this.actor;
+    const key = target.dataset.key;
+    if (!actor?.isOwner) return;
+    await spendEconomy(actor, key, economyState(actor)?.[key] ? -1 : 1);
   }
 
   /** Клик по подписи группы: оставить только её; повторный клик — снова все группы. */
@@ -935,8 +1186,12 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     return actor.rollDeathSave({ event });
   }
 
+  /** Кнопка «Навыки»: открыть или закрыть панель «Проверки и навыки». */
   static #openSkills() {
-    ui.notifications.info("Окно навыков появится в следующей версии HUD.");
+    const skills = game.modules.get(MODULE_ID).api?.skills;
+    if (!skills) return;
+    if (skills.rendered) return skills.close();
+    return skills.render({ force: true });
   }
 
   static async #setRollMode(event, target) {
@@ -953,9 +1208,166 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 }
 
+/* ---------- Полоса инициативы ---------- */
+
+/**
+ * Полоса инициативы вверху экрана во время начатого боя: портреты участников по порядку хода,
+ * текущий ход крупнее с красным свечением, союзники синие, враги красные, полоска ПЗ
+ * (у врагов — только ГМу). Клик — камера на токен (свой токен ещё и выделяется).
+ */
+class KhvorInitiative extends HandlebarsApplicationMixin(ApplicationV2) {
+  static DEFAULT_OPTIONS = {
+    id: "khvor-initiative",
+    tag: "section",
+    classes: ["khvor-hud"],
+    window: { frame: false, positioned: false },
+    actions: { focusCombatant: KhvorInitiative.#focusCombatant }
+  };
+
+  static PARTS = {
+    bar: { template: `modules/${MODULE_ID}/templates/initiative.hbs` }
+  };
+
+  async _prepareContext() {
+    const combat = game.combat;
+    if (!combat?.started || !game.settings.get(MODULE_ID, "showInitiative")) return { show: false };
+    const F = CONST.TOKEN_DISPOSITIONS;
+    const list = [];
+    for (const c of combat.turns) {
+      if (c.hidden && !game.user.isGM) continue; // скрытых участников игроки не видят
+      const actor = c.actor;
+      const disposition = c.token?.disposition ?? F.NEUTRAL;
+      const side = disposition === F.FRIENDLY ? "is-ally" : disposition === F.HOSTILE ? "is-enemy" : "is-neutral";
+      const hp = actor?.system?.attributes?.hp;
+      const max = hp?.effectiveMax ?? hp?.max ?? 0;
+      list.push({
+        id: c.id,
+        name: c.name,
+        img: actor?.img || c.img,
+        initiative: Number.isFinite(c.initiative) ? c.initiative : null,
+        current: c.id === combat.combatant?.id,
+        defeated: c.isDefeated,
+        hidden: c.hidden,
+        side,
+        // ПЗ врагов и нейтралов видит только ГМ; своих и союзников — все.
+        showHp: game.user.isGM || disposition === F.FRIENDLY || actor?.isOwner,
+        hp: max > 0 ? Math.round(Math.clamp((hp.value ?? 0) / max, 0, 1) * 100) : 0
+      });
+    }
+    return { show: list.length > 0, round: combat.round, list };
+  }
+
+  _onRender(context, options) {
+    super._onRender?.(context, options);
+    // По центру свободной области: слева от боковой панели Foundry.
+    this.element.style.setProperty("--kh-area-right", `${freeAreaRight()}px`);
+  }
+
+  static #focusCombatant(event, target) {
+    const combatant = game.combat?.combatants.get(target.dataset.id);
+    const token = combatant?.token?.object;
+    if (!token) return;
+    canvas.animatePan({ x: token.center.x, y: token.center.y, duration: 250 });
+    if (token.isOwner) token.control({ releaseOthers: true });
+  }
+}
+
+/* ---------- Окно навыков ---------- */
+
+/** Подписи владения навыком по множителю dnd5e (skills.*.value: 0, 0.5, 1, 2). */
+const PROFICIENCY = { 0.5: ["is-half", "половина бонуса"], 1: ["is-prof", "владение"], 2: ["is-expert", "компетентность"] };
+
+/**
+ * Панель «Проверки и навыки» над HUD (кнопка «Навыки» в левой панели): характеристики с проверкой
+ * и спасброском, 18 навыков, пассивная внимательность. Клик — бросок dnd5e
+ * (rollAbilityCheck / rollSavingThrow / rollSkill), режим «Преим. / Помеха» тоже действует.
+ */
+class KhvorSkills extends HandlebarsApplicationMixin(ApplicationV2) {
+  static DEFAULT_OPTIONS = {
+    id: "khvor-skills",
+    tag: "section",
+    window: { frame: false, positioned: false },
+    actions: {
+      rollCheck: KhvorSkills.#rollCheck,
+      rollSave: KhvorSkills.#rollSave,
+      rollSkill: KhvorSkills.#rollSkill,
+      closeSkills: KhvorSkills.#closeSkills
+    }
+  };
+
+  static PARTS = {
+    skills: { template: `modules/${MODULE_ID}/templates/skills.hbs` }
+  };
+
+  /** Актёр — тот же, что сейчас в HUD. */
+  get actor() {
+    return game.modules.get(MODULE_ID).api?.hud?.actor ?? null;
+  }
+
+  async _prepareContext() {
+    const actor = this.actor;
+    if (!actor) return { actor: false };
+    const sys = actor.system;
+    const ABL = CONFIG.DND5E.abilities;
+    const abilities = Object.keys(ABL).filter((k) => sys.abilities?.[k]).map((key) => {
+      const a = sys.abilities[key];
+      const save = typeof a.save === "object" ? a.save?.value : a.save;
+      return {
+        key,
+        abbr: ABL[key].abbreviation ?? key,
+        label: ABL[key].label ?? key,
+        mod: signed(a.mod ?? 0),
+        save: signed(save ?? a.mod ?? 0),
+        saveProf: (a.proficient ?? 0) >= 1
+      };
+    });
+    const skills = Object.entries(CONFIG.DND5E.skills)
+      .filter(([key]) => sys.skills?.[key])
+      .map(([key, cfg]) => {
+        const s = sys.skills[key];
+        const [profClass, profLabel] = PROFICIENCY[s.value] ?? ["", ""];
+        const ability = s.ability ?? cfg.ability;
+        return {
+          key,
+          label: cfg.label ?? key,
+          abbr: ABL[ability]?.abbreviation ?? ability,
+          abilityLabel: ABL[ability]?.label ?? ability,
+          total: signed(s.total ?? s.mod ?? 0),
+          passive: s.passive ?? "—",
+          profClass,
+          profLabel
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label, "ru"));
+    return { actor: true, name: actor.name, passive: sys.skills?.prc?.passive ?? "—", abilities, skills };
+  }
+
+  static #rollCheck(event, target) {
+    return this.actor?.rollAbilityCheck({ ability: target.dataset.ability, event });
+  }
+
+  static #rollSave(event, target) {
+    return this.actor?.rollSavingThrow({ ability: target.dataset.ability, event });
+  }
+
+  static #rollSkill(event, target) {
+    return this.actor?.rollSkill({ skill: target.dataset.skill, event });
+  }
+
+  static #closeSkills() {
+    return this.close();
+  }
+}
+
 /* ---------- Подключение к Foundry ---------- */
 
 Hooks.once("init", () => {
+  // Состояние «Хвор» — магическая зараза мира: своя иконка, видно в меню состояний токена.
+  // HUD по нему красит сферу ПЗ (orb-blood-khvor) и подсвечивает её фиолетовым.
+  if (!CONFIG.statusEffects.some((s) => s.id === "khvor")) {
+    CONFIG.statusEffects.push({ id: "khvor", name: "KHVOR.Status.khvor", img: `${ASSETS}/status-khvor.png` });
+  }
+
   game.settings.register(MODULE_ID, "rollMode", {
     scope: "client",
     config: false,
@@ -970,9 +1382,19 @@ Hooks.once("init", () => {
     default: false
   });
 
+  game.settings.register(MODULE_ID, "showInitiative", {
+    name: "KHVOR.Settings.showInitiative.name",
+    hint: "KHVOR.Settings.showInitiative.hint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: () => game.modules.get(MODULE_ID).api?.initiative?.render({ force: true })
+  });
+
   game.settings.register(MODULE_ID, "hidePlayers", {
-    name: "Скрывать список игроков",
-    hint: "Пока HUD открыт, список игроков в левом нижнем углу прячется: на его месте стоит HUD.",
+    name: "KHVOR.Settings.hidePlayers.name",
+    hint: "KHVOR.Settings.hidePlayers.hint",
     scope: "client",
     config: true,
     type: Boolean,
@@ -981,8 +1403,8 @@ Hooks.once("init", () => {
   });
 
   game.settings.register(MODULE_ID, "hideHotbar", {
-    name: "Скрывать стандартную панель макросов",
-    hint: "Пока HUD открыт, стандартная панель макросов внизу экрана прячется, чтобы не перекрываться с ним.",
+    name: "KHVOR.Settings.hideHotbar.name",
+    hint: "KHVOR.Settings.hideHotbar.hint",
     scope: "client",
     config: true,
     type: Boolean,
@@ -1002,12 +1424,21 @@ Hooks.once("socketlib.ready", () => {
 
 Hooks.once("ready", () => {
   const hud = new KhvorHud();
-  game.modules.get(MODULE_ID).api = { hud };
+  const initiative = new KhvorInitiative();
+  const skills = new KhvorSkills();
+  game.modules.get(MODULE_ID).api = { hud, initiative, skills };
   document.body.classList.toggle("khvor-hide-hotbar", game.settings.get(MODULE_ID, "hideHotbar"));
   document.body.classList.toggle("khvor-hide-players", game.settings.get(MODULE_ID, "hidePlayers"));
 
   // Перерисовка не чаще раза в 50 мс, даже если событий много подряд.
-  const refresh = foundry.utils.debounce(() => hud.render({ force: true }), 50);
+  const refresh = foundry.utils.debounce(async () => {
+    await hud.render({ force: true });
+    // Открытая панель навыков следует за актёром HUD; нет актёра — закрывается.
+    if (skills.rendered) {
+      if (hud.actor) skills.render();
+      else skills.close();
+    }
+  }, 50);
   const hooks = [
     "canvasReady", "controlToken", "updateToken", "updateActor", "updateCombat", "deleteCombat", "combatStart",
     "createItem", "updateItem", "deleteItem",
@@ -1015,13 +1446,40 @@ Hooks.once("ready", () => {
   ];
   for (const hook of hooks) Hooks.on(hook, refresh);
 
+  // Полоса инициативы перерисовывается на событиях боя, ПЗ и токенов.
+  const refreshInitiative = foundry.utils.debounce(() => initiative.render({ force: true }), 50);
+  const initiativeHooks = [
+    "canvasReady", "combatStart", "updateCombat", "deleteCombat", "createCombatant", "updateCombatant",
+    "deleteCombatant", "updateActor", "updateToken"
+  ];
+  for (const hook of initiativeHooks) Hooks.on(hook, refreshInitiative);
+  Hooks.on("collapseSidebar", () => setTimeout(refreshInitiative, 300));
+  window.addEventListener("resize", refreshInitiative);
+  refreshInitiative();
+
+  // Режим броска: хуки dnd5e 6.x перед бросками d20 (preRollD20TestV2 — проверки, спасброски, навыки,
+  // инструменты, смерть, концентрация; preRollAttackV2 — атаки).
+  Hooks.on("dnd5e.preRollD20TestV2", (config) => applyRollMode(config));
+  Hooks.on("dnd5e.preRollAttackV2", (config) => applyRollMode(config));
+
   // Сроки эффектов базовых действий: снимает только активный ГМ, чтобы не удалять дважды.
   Hooks.on("updateCombat", (combat, changes) => {
     if (!("turn" in changes || "round" in changes) || !game.users.activeGM?.isSelf) return;
     expireBasicEffects(combat);
+    resetEconomy(combat);
+  });
+
+  // Экономия действий: использованная способность тратит действие, бонусное действие или реакцию.
+  // Хук срабатывает только у того, кто использовал способность.
+  Hooks.on("dnd5e.postUseActivity", (activity) => {
+    const actor = activity?.actor;
+    const type = activity?.activation?.type;
+    if (actor && ECONOMY_KEYS.includes(type)) spendEconomy(actor, type);
   });
   Hooks.on("deleteCombat", (combat) => {
-    if (game.users.activeGM?.isSelf) clearCombatEffects(combat);
+    if (!game.users.activeGM?.isSelf) return;
+    clearCombatEffects(combat);
+    for (const c of combat.combatants) if (c.actor?.getFlag(MODULE_ID, "economy")) c.actor.unsetFlag(MODULE_ID, "economy");
   });
   // Свернули или развернули боковую панель, изменили размер окна — пересчитать место и столбцы.
   Hooks.on("collapseSidebar", () => setTimeout(refresh, 300)); // после анимации сворачивания

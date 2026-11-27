@@ -41,6 +41,30 @@
 
     {{!-- Левая панель в три столбца: щит КБ | скорость, СЛ, инициатива | кнопки 2 × 2 --}}
     <div class="kh-panel">
+      {{!-- Ряд эффектов над панелью: концентрация плашкой, остальное иконками; крестик — снять --}}
+      {{#if effects.show}}
+      <div class="kh-effects">
+        {{#each effects.concentration}}
+        <div class="kh-conc-plaque" data-tooltip="Концентрация: {{name}}">
+          <img src="{{@root.assets}}/status-concentration.png" alt="">
+          <span class="kh-conc-name">{{name}}</span>
+          {{#if rounds}}<span class="kh-conc-rounds">{{rounds}} р.</span>{{/if}}
+          {{#if @root.effects.canRemove}}
+          <button type="button" class="kh-x" data-action="removeEffect" data-uuid="{{uuid}}" data-conc="1" data-tooltip="Прервать концентрацию" aria-label="Прервать концентрацию">×</button>
+          {{/if}}
+        </div>
+        {{/each}}
+        {{#each effects.list}}
+        <div class="kh-effect" data-tooltip="{{tooltip}}">
+          <img src="{{img}}" alt="">
+          {{#if rounds}}<span class="kh-effect-rounds">{{rounds}}</span>{{/if}}
+          {{#if @root.effects.canRemove}}
+          <button type="button" class="kh-x" data-action="removeEffect" data-uuid="{{uuid}}" data-tooltip="Снять: {{name}}" aria-label="Снять: {{name}}">×</button>
+          {{/if}}
+        </div>
+        {{/each}}
+      </div>
+      {{/if}}
       <div class="kh-ac" data-tooltip="Класс брони">
         <span class="kh-ac-value">{{ac}}</span>
         <span class="kh-ac-label">КБ</span>
@@ -58,6 +82,17 @@
           <span class="kh-stat-value">{{init}}</span>
           <span class="kh-stat-label">иниц.</span>
         </div>
+        {{#if legres}}
+        {{!-- Легендарное сопротивление NPC: горит — есть; клик по горящему — использовать, по пустому — вернуть --}}
+        <div class="kh-legres" data-tooltip="Легендарное сопротивление: {{legres.value}} из {{legres.max}}">
+          <span class="kh-stat-label">сопр.</span>
+          {{#each legres.gems}}
+          <button type="button" class="kh-res-gem" data-action="useResistance" data-on="{{#if this}}1{{/if}}" aria-label="{{#if this}}Использовать сопротивление{{else}}Вернуть сопротивление{{/if}}">
+            <img src="{{@root.assets}}/{{#if this}}gem-action{{else}}gem-socket-empty{{/if}}.png" alt="">
+          </button>
+          {{/each}}
+        </div>
+        {{/if}}
       </div>
       <div class="kh-panel-btns">
         <button type="button" class="kh-icon-btn" data-action="rollInitiative" data-tooltip="Бросить инициативу" aria-label="Бросить инициативу">
@@ -90,6 +125,19 @@
         <button type="button" class="kh-tab {{#if active}}active{{/if}}" role="tab" aria-selected="{{active}}" data-action="setTab" data-tab="{{id}}">{{label}}</button>
         {{/each}}
       </div>
+      {{#if legact}}
+      {{!-- Легендарные действия NPC: горит — есть; клик по горящему — потратить, по пустому — вернуть --}}
+      <div class="kh-slots kh-legact" data-tooltip="Легендарные действия: {{legact.value}} из {{legact.max}}">
+        <span class="kh-slot-row">
+          <span class="kh-slot-label kh-legact-label">Легендарные</span>
+          {{#each legact.gems}}
+          <button type="button" class="kh-res-gem" data-action="spendLegendary" data-on="{{#if this}}1{{/if}}" aria-label="{{#if this}}Потратить легендарное действие{{else}}Вернуть легендарное действие{{/if}}">
+            <img src="{{@root.assets}}/{{#if this}}gem-action{{else}}gem-socket-empty{{/if}}.png" alt="">
+          </button>
+          {{/each}}
+        </span>
+      </div>
+      {{/if}}
       {{#if slots.length}}
       {{!-- Ячейки заклинаний: горит — есть, пустое гнездо — потрачено; договор отдельно --}}
       <div class="kh-slots">
@@ -113,7 +161,7 @@
 
     <div class="kh-groups">
       {{#each panel.groups}}
-      <div class="kh-group kh-group-{{key}} {{#if stub}}is-stub{{/if}} {{#if active}}is-active{{/if}}">
+      <div class="kh-group kh-group-{{key}} {{#if stub}}is-stub{{/if}} {{#if active}}is-active{{/if}} {{#if spent}}is-economy-spent{{/if}}">
         {{#unless stub}}
         <div class="kh-group-body">
           <div class="kh-tiles" style="--cols: {{cols}}">
@@ -131,11 +179,20 @@
           </div>
         </div>
         {{/unless}}
-        {{!-- Подпись группы — она же фильтр: клик оставляет только эту группу, повторный клик — все --}}
-        <button type="button" class="kh-group-label" data-action="setGroup" data-group="{{key}}" aria-pressed="{{active}}" data-tooltip="{{#if active}}Показать все группы{{else}}Только «{{label}}»{{/if}}">
-          {{#if gem}}<img src="{{@root.assets}}/{{gem}}.png" alt="">{{/if}}
-          <span>{{label}}</span>
-        </button>
+        {{!-- Подпись группы: ромб — экономия действий (в бою гаснет, когда потрачено; клик — вручную),
+             название — фильтр (клик оставляет только эту группу, повторный клик — все) --}}
+        <div class="kh-group-label">
+          {{#if gem}}
+          {{#if @root.inCombat}}
+          <button type="button" class="kh-gem {{#if spent}}is-spent{{/if}}" data-action="toggleEconomy" data-key="{{key}}" data-tooltip="{{#if spent}}{{label}}: потрачено (клик — вернуть){{else}}{{label}}: доступно (клик — отметить потраченным){{/if}}" aria-label="{{label}}: {{#if spent}}потрачено{{else}}доступно{{/if}}">
+            <img src="{{@root.assets}}/{{#if spent}}gem-socket-empty{{else}}{{gem}}{{/if}}.png" alt="">
+          </button>
+          {{else}}
+          <img class="kh-gem-static" src="{{@root.assets}}/{{gem}}.png" alt="">
+          {{/if}}
+          {{/if}}
+          <button type="button" class="kh-group-filter" data-action="setGroup" data-group="{{key}}" aria-pressed="{{active}}" data-tooltip="{{#if active}}Показать все группы{{else}}Только «{{label}}»{{/if}}">{{label}}</button>
+        </div>
       </div>
       {{else}}
       <div class="kh-empty">Нет способностей</div>
@@ -147,9 +204,17 @@
   <div class="kh-right">
     <div class="kh-seg" role="group" aria-label="Режим броска">
       {{#each modes}}
-      <button type="button" class="kh-seg-btn {{cls}} {{#if active}}active{{/if}}" data-action="setRollMode" data-mode="{{id}}" aria-pressed="{{active}}">{{label}}</button>
+      <button type="button" class="kh-seg-btn {{cls}} {{#if active}}active{{/if}}" data-action="setRollMode" data-mode="{{id}}" data-tooltip="{{hint}}" aria-pressed="{{active}}">{{label}}</button>
       {{/each}}
     </div>
+    {{#if visibility}}
+    {{!-- Только ГМу: броски всем или скрыто (режим бросков Foundry) --}}
+    <div class="kh-seg kh-seg-visibility" role="group" aria-label="Кто видит броски">
+      {{#each visibility}}
+      <button type="button" class="kh-seg-btn {{#if active}}active{{/if}}" data-action="setVisibility" data-mode="{{mode}}" data-tooltip="{{hint}}" aria-pressed="{{active}}">{{label}}</button>
+      {{/each}}
+    </div>
+    {{/if}}
     <div class="kh-basic" role="group" aria-label="Базовые действия">
       {{#each basic}}
       <button type="button" class="kh-basic-btn {{#if active}}is-active{{/if}}" data-action="basicAction" data-basic="{{id}}" data-tooltip="{{label}}{{#if active}} — активно, клик снимет{{/if}}" aria-label="{{label}}" aria-pressed="{{#if active}}true{{else}}false{{/if}}">
