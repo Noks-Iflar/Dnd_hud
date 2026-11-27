@@ -88,7 +88,7 @@ const LEFT_BLOCK_WIDTH = 485; // портрет, сфера и левая пан
 const RIGHT_RESERVE = 210;    // правый блок: режим броска и базовые действия
 const PANEL_EXTRAS = 160;     // рамка панели, разделители групп, отступы
 const COLUMNS_MIN = 5;
-const COLUMNS_MAX = 12;
+const COLUMNS_MAX = 20;
 
 /** Правая граница свободной области: левый край боковой панели Foundry (или край окна). */
 function freeAreaRight() {
@@ -154,6 +154,7 @@ function paginate(groups, { tab, group = null, page, rows, columns = COLUMNS_MAX
     tabs: tabs.map((t) => ({ ...t, active: t.id === tab })),
     tab,
     group,
+    columns,
     page,
     pages,
     pageLabel: `${page + 1}/${pages}`,
@@ -793,7 +794,8 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       group: this.panel.group,
       page: this.panel.page,
       rows: game.settings.get(MODULE_ID, "tallPanel") ? 2 : 1,
-      columns: pageColumns()
+      // Сначала оценка по ширине экрана, после отрисовки #fitColumns() подгоняет по факту.
+      columns: this.#fit.cols ?? pageColumns()
     });
     // Ромбы экономии действий у групп «Действие / Бонусное / Реакция».
     const economy = economyState(actor);
@@ -882,6 +884,36 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     this._lastActorId = this.actor?.id;
 
     this.#bindTooltips();
+    this.#fitColumns(context);
+  }
+
+  /** Подгонка числа столбцов: cols — найденное значение, tries — защита от бесконечной перерисовки. */
+  #fit = { cols: null, tries: 0 };
+
+  /** Экран или боковая панель изменились — считать столбцы заново. */
+  resetFit() {
+    this.#fit = { cols: null, tries: 0 };
+  }
+
+  /**
+   * После отрисовки меряем, сколько места осталось до боковой панели Foundry, и добавляем столько
+   * столбцов плиток, сколько влезет (если плиток больше, чем помещается). Если HUD залез на панель —
+   * убираем лишние. Не больше трёх перерисовок подряд.
+   */
+  #fitColumns(context) {
+    const panel = context.panel;
+    if (!panel?.columns) return;
+    const slack = freeAreaRight() - 16 - this.element.getBoundingClientRect().right;
+    let target = panel.columns;
+    if (slack < 0) target -= Math.ceil(-slack / TILE_WIDTH);
+    else if (panel.multi) target += Math.floor(slack / TILE_WIDTH);
+    target = Math.clamp(target, COLUMNS_MIN, COLUMNS_MAX);
+    if (target !== panel.columns && this.#fit.tries < 3) {
+      this.#fit = { cols: target, tries: this.#fit.tries + 1 };
+      setTimeout(() => this.render(), 0); // после текущей отрисовки
+    } else {
+      this.#fit.tries = 0;
+    }
   }
 
   /* ---------- Подсказка при наведении ---------- */
@@ -1482,7 +1514,11 @@ Hooks.once("ready", () => {
     for (const c of combat.combatants) if (c.actor?.getFlag(MODULE_ID, "economy")) c.actor.unsetFlag(MODULE_ID, "economy");
   });
   // Свернули или развернули боковую панель, изменили размер окна — пересчитать место и столбцы.
-  Hooks.on("collapseSidebar", () => setTimeout(refresh, 300)); // после анимации сворачивания
-  window.addEventListener("resize", refresh);
+  const refit = () => {
+    hud.resetFit();
+    refresh();
+  };
+  Hooks.on("collapseSidebar", () => setTimeout(refit, 300)); // после анимации сворачивания
+  window.addEventListener("resize", refit);
   refresh();
 });
