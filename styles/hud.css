@@ -980,3 +980,13 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-skill-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kh-skill-name small { font-size: 10px; color: var(--kh-muted); }
 .kh-skill-total { font-weight: 700; font-variant-numeric: lining-nums tabular-nums; }
+
+/* ---------- Режим ГМа: легендарные действия и сопротивление ---------- */
+.kh-legact-label { font-size: 14px; color: #ff8a94; }
+.kh-res-gem { display: block; padding: 1px; border-radius: 3px; transition: filter 0.15s; }
+.kh-res-gem img { display: block; width: 14px; height: 16px; object-fit: contain; }
+.kh-res-gem:hover { filter: brightness(1.4) drop-shadow(0 0 4px rgba(255, 77, 94, 0.6)); }
+.kh-legres { display: flex; align-items: center; gap: 2px; }
+.kh-legres .kh-stat-label { margin-right: 4px; }
+.kh-legres .kh-res-gem img { width: 12px; height: 14px; }
+.kh-seg-visibility .kh-seg-btn.active { background: #2a2532; color: #fff; }

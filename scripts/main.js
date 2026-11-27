@@ -487,6 +487,43 @@ function effectsRow(actor) {
   };
 }
 
+/* ---------- Режим ГМа: легендарные действия и сопротивление, видимость бросков ---------- */
+
+/** Ромбы ресурса { max, spent } (resources.legact / legres): true — есть, false — потрачено. */
+function resourceGems(res) {
+  const max = Number(res?.max) || 0;
+  if (max <= 0) return null;
+  const value = Math.clamp(max - (Number(res.spent) || 0), 0, max);
+  return { max, value, gems: Array.from({ length: max }, (_, i) => i < value) };
+}
+
+/** Активность «Легендарное сопротивление»: тратит resources.legres.value (как у дракона и Урдрака). */
+function resistanceActivity(actor) {
+  for (const item of actor.items) {
+    for (const activity of item.system.activities ?? []) {
+      if (activity.consumption?.targets?.some((t) => t.target === "resources.legres.value")) return activity;
+    }
+  }
+  return null;
+}
+
+/** Ключ настройки режима бросков Foundry, если он есть (в V14 мог измениться — тогда переключатель скрыт). */
+function rollModeSettingKey() {
+  return game.settings.settings.has("core.rollMode") ? "rollMode" : null;
+}
+
+/** Переключатель «Открыто / Скрыто» для ГМа: публичные броски или только ГМу. */
+function visibilityModes() {
+  const key = rollModeSettingKey();
+  if (!game.user.isGM || !key) return null;
+  const modes = CONST.DICE_ROLL_MODES ?? { PUBLIC: "publicroll", PRIVATE: "gmroll" };
+  const current = game.settings.get("core", key);
+  return [
+    { mode: modes.PUBLIC, label: "Открыто", hint: "Броски видят все", active: current === modes.PUBLIC },
+    { mode: modes.PRIVATE, label: "Скрыто", hint: "Броски видит только ГМ", active: current !== modes.PUBLIC }
+  ];
+}
+
 /* ---------- Экономия действий ---------- */
 
 /** Ресурсы хода: действие, бонусное действие, реакция (ключи совпадают с группами панели). */
@@ -710,6 +747,9 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       setGroup: KhvorHud.#setGroup,
       toggleEconomy: KhvorHud.#toggleEconomy,
       removeEffect: KhvorHud.#removeEffect,
+      spendLegendary: KhvorHud.#spendLegendary,
+      useResistance: KhvorHud.#useResistance,
+      setVisibility: KhvorHud.#setVisibility,
       endTurn: KhvorHud.#endTurn,
       rollInitiative: KhvorHud.#rollInitiative,
       openSkills: KhvorHud.#openSkills,
@@ -819,6 +859,9 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       panel: abilities,
       inCombat: !!economy,
       effects: effectsRow(actor),
+      legact: resourceGems(sys.resources?.legact),
+      legres: resourceGems(sys.resources?.legres),
+      visibility: visibilityModes(),
       endTurn: endTurnState(actor),
       slots: spellSlots(actor)
     };
@@ -1049,6 +1092,39 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   static #setTab(event, target) {
     this.panel.tab = target.dataset.tab;
     this.panel.page = 0;
+    this.render();
+  }
+
+  /** Ромб легендарного действия: горящий — потратить, пустой — вернуть. */
+  static async #spendLegendary(event, target) {
+    const actor = this.actor;
+    const res = actor?.system.resources?.legact;
+    if (!actor?.isOwner || !res) return;
+    const spent = Math.clamp((Number(res.spent) || 0) + (target.dataset.on ? 1 : -1), 0, Number(res.max) || 0);
+    return actor.update({ "system.resources.legact.spent": spent });
+  }
+
+  /**
+   * Ромб легендарного сопротивления: горящий — использовать способность сопротивления
+   * (dnd5e сам спишет заряд и напишет в чат), если её нет — просто потратить; пустой — вернуть.
+   */
+  static async #useResistance(event, target) {
+    const actor = this.actor;
+    const res = actor?.system.resources?.legres;
+    if (!actor?.isOwner || !res) return;
+    if (target.dataset.on) {
+      const activity = resistanceActivity(actor);
+      if (activity) return activity.use({ event });
+    }
+    const spent = Math.clamp((Number(res.spent) || 0) + (target.dataset.on ? 1 : -1), 0, Number(res.max) || 0);
+    return actor.update({ "system.resources.legres.spent": spent });
+  }
+
+  /** «Открыто / Скрыто» (только ГМ): режим бросков Foundry. */
+  static async #setVisibility(event, target) {
+    const key = rollModeSettingKey();
+    if (!game.user.isGM || !key) return;
+    await game.settings.set("core", key, target.dataset.mode);
     this.render();
   }
 
