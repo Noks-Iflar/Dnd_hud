@@ -140,9 +140,13 @@ function paginate(groups, { tab, group = null, page, rows, columns = COLUMNS_MAX
   }
   // При фильтре по группе остальные группы остаются короткими «заглушками» — одной подписью,
   // чтобы на них можно было переключиться.
-  const pageGroups = group
-    ? present.map((g) => (g.key === group ? (shown.get(g.key) ?? { ...g, tiles: [] }) : { ...g, tiles: [], stub: true }))
-    : [...shown.values()];
+  // Без фильтра группы, которые не попали на эту страницу (например, «Бонусное» на 3-й), тоже остаются
+  // заглушками: клик по подписи включает фильтр по ней — и её плитки сразу видны.
+  const pageGroups = present
+    .map((g) => {
+      if (group) return g.key === group ? (shown.get(g.key) ?? { ...g, tiles: [] }) : { ...g, tiles: [], stub: true };
+      return shown.get(g.key) ?? { ...g, tiles: [], stub: true, elsewhere: true };
+    });
   for (const g of pageGroups) {
     g.active = g.key === group;
     // В режиме двух строк у группы половина столбцов: плитки идут слева направо, потом вторая строка.
@@ -235,6 +239,24 @@ function hasSlot(actor, level, method) {
 }
 
 /**
+ * Сколько ячеек для заклинания круга level: same — ячейки этого круга, higher — круги выше.
+ * Ячейка договора считается по своему кругу; заклинания договора творятся только ею.
+ */
+function slotCounts(actor, level, method) {
+  const spells = actor.system.spells ?? {};
+  const pact = spells.pact;
+  const pactValue = Number(pact?.value) || 0;
+  const pactLevel = Number(pact?.level) || 0;
+  if (method === "pact") return { same: pactLevel >= level ? pactValue : 0, higher: 0 };
+  let same = Number(spells[`spell${level}`]?.value) || 0;
+  let higher = 0;
+  for (let l = level + 1; l <= 9; l++) higher += Number(spells[`spell${l}`]?.value) || 0;
+  if (pactLevel === level) same += pactValue;
+  else if (pactLevel > level) higher += pactValue;
+  return { same, higher };
+}
+
+/**
  * Ячейки заклинаний над панелью: ряд ромбов на каждый круг, где есть ячейки, и отдельно договор.
  * gems — массив true/false: горит или потрачена.
  */
@@ -282,13 +304,16 @@ function tileState(actor, item, activity, groupKey) {
   }
   if (uses && uses.value === 0) state.spent = true;
 
-  // Заклинание за ячейку: значок круга «III», плитка бледнеет, если подходящих ячеек не осталось.
+  // Заклинание за ячейку: круг «III» в левом углу, справа — сколько ячеек: «2 +3» (2 этого круга
+  // и ещё 3 выше). Плитка бледнеет, если подходящих ячеек не осталось.
   const level = item.type === "spell" ? item.system.level ?? 0 : 0;
   if (level > 0 && activity.type !== "forward" && !consumesItem && !uses) {
-    state.badge = ROMAN[level];
-    state.level = true;
+    state.circle = ROMAN[level];
     state.pact = item.system.method === "pact";
-    if (!hasSlot(actor, level, item.system.method)) state.spent = true;
+    const { same, higher } = slotCounts(actor, level, item.system.method);
+    state.badge = higher > 0 ? `${same} +${higher}` : `${same}`;
+    state.level = true;
+    if (same + higher === 0) state.spent = true;
   }
 
   if (item.type === "consumable" && (item.system.quantity ?? 1) > 1) state.quantity = `×${item.system.quantity}`;
@@ -468,12 +493,17 @@ function effectsRow(actor) {
   const concentration = [...conc].map((e) => ({ uuid: e.uuid, name: concentrationName(e), rounds: effectRounds(e) }));
   const seen = new Set([...conc].map((e) => e.uuid));
   const list = [];
-  for (const e of actor.temporaryEffects ?? []) {
-    if (seen.has(e.uuid) || e.statuses?.has("concentrating")) continue;
+  // Временные эффекты, включая выключенные (правый клик по иконке выключает и включает их обратно).
+  const all = typeof actor.allApplicableEffects === "function" ? [...actor.allApplicableEffects()] : [...(actor.temporaryEffects ?? [])];
+  for (const e of all) {
+    if (!e.isTemporary || seen.has(e.uuid) || e.statuses?.has("concentrating")) continue;
     seen.add(e.uuid);
     const rounds = effectRounds(e);
     const desc = plainText(e.description);
-    list.push({ uuid: e.uuid, name: e.name, img: e.img, rounds, tooltip: [e.name, rounds ? `${rounds} р.` : "", desc].filter(Boolean).join(" · ") });
+    list.push({
+      uuid: e.uuid, name: e.name, img: e.img, rounds, disabled: e.disabled,
+      tooltip: [e.name, e.disabled ? "выключен" : "", rounds ? `${rounds} р.` : "", desc].filter(Boolean).join(" · ")
+    });
   }
   for (const e of actor.effects) {
     if (seen.has(e.uuid) || !e.getFlag(MODULE_ID, "basic") || e.disabled) continue;
@@ -486,6 +516,24 @@ function effectsRow(actor) {
     // Снимать эффекты может владелец актёра (игрок — своего персонажа) и ГМ.
     canRemove: actor.isOwner
   };
+}
+
+/* ---------- Кости хитов (у кнопки короткого отдыха) ---------- */
+
+/** Кости хитов персонажа: по классам — уровни минус потраченные (classes.*.system.hd.spent). */
+function hitDice(actor) {
+  if (actor.type !== "character") return null;
+  let max = 0;
+  let spent = 0;
+  const kinds = new Set();
+  for (const item of actor.items) {
+    if (item.type !== "class") continue;
+    max += Number(item.system.levels) || 0;
+    spent += Number(item.system.hd?.spent) || 0;
+    if (item.system.hd?.denomination) kinds.add(item.system.hd.denomination);
+  }
+  if (!max) return null;
+  return { value: Math.max(0, max - spent), max, kinds: [...kinds].join(", ") };
 }
 
 /* ---------- Режим ГМа: легендарные действия и сопротивление, видимость бросков ---------- */
@@ -518,11 +566,10 @@ function visibilityModes() {
   const key = rollModeSettingKey();
   if (!game.user.isGM || !key) return null;
   const modes = CONST.DICE_ROLL_MODES ?? { PUBLIC: "publicroll", PRIVATE: "gmroll" };
-  const current = game.settings.get("core", key);
-  return [
-    { mode: modes.PUBLIC, label: "Открыто", hint: "Броски видят все", active: current === modes.PUBLIC },
-    { mode: modes.PRIVATE, label: "Скрыто", hint: "Броски видит только ГМ", active: current !== modes.PUBLIC }
-  ];
+  const open = game.settings.get("core", key) === modes.PUBLIC;
+  return open
+    ? { open: true, next: modes.PRIVATE, label: "Броски всем", hint: "Броски видят все. Клик — видит только ГМ" }
+    : { open: false, next: modes.PUBLIC, label: "Броски ГМу", hint: "Броски видит только ГМ. Клик — видят все" };
 }
 
 /* ---------- Экономия действий ---------- */
@@ -846,6 +893,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
         { id: "disadvantage", label: "Помеха", cls: "dis", hint: "Следующий бросок — с помехой" }
       ].map((m) => ({ ...m, active: m.id === rollMode })),
       canRest: actor.type === "character",
+      hd: hitDice(actor),
       basic: BASIC_ACTIONS.map((b) => ({ ...b, active: basicActive(actor, b) })),
       // Концентрация: dnd5e вешает на актёра состояние «concentrating».
       concentrating: actor.statuses?.has(CONFIG.DND5E?.specialStatusEffects?.CONCENTRATING ?? "concentrating"),
@@ -884,7 +932,49 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     this._lastActorId = this.actor?.id;
 
     this.#bindTooltips();
+    this.#bindContextMenus();
+    this.#alignHeights();
     this.#fitColumns(context);
+  }
+
+  /** Левая панель и правый блок — той же высоты, что средняя панель: ровный верхний край HUD. */
+  #alignHeights() {
+    const center = this.element.querySelector(".kh-center");
+    if (!center) return;
+    const h = center.offsetHeight;
+    for (const el of this.element.querySelectorAll(".kh-panel, .kh-right")) el.style.minHeight = `${h}px`;
+  }
+
+  /**
+   * Правый клик: по плитке — открыть лист предмета (у «cast» — сотворяемого заклинания);
+   * по иконке эффекта — выключить или включить эффект; по спасброскам от смерти — сбросить их.
+   */
+  #bindContextMenus() {
+    const actor = this.actor;
+    if (!actor) return;
+    const on = (selector, handler) => {
+      for (const el of this.element.querySelectorAll(selector)) {
+        el.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          handler(el, event);
+        });
+      }
+    };
+    on(".kh-tile", (el) => {
+      const item = actor.items.get(el.dataset.itemId);
+      const activity = item?.system.activities?.get(el.dataset.activityId);
+      const spell = activity?.type === "cast"
+        ? actor.items.find((i) => i.getFlag("dnd5e", "cachedFor") === `.Item.${item.id}.Activity.${activity.id}`)
+        : null;
+      (spell ?? item)?.sheet?.render(true);
+    });
+    if (!actor.isOwner) return;
+    on(".kh-effect", async (el) => {
+      const effect = await fromUuid(el.dataset.uuid);
+      if (effect) await effect.update({ disabled: !effect.disabled });
+    });
+    on(".kh-death", () => actor.update({ "system.attributes.death.success": 0, "system.attributes.death.failure": 0 }));
   }
 
   /** Подгонка числа столбцов: cols — найденное значение, tries — защита от бесконечной перерисовки. */
@@ -1156,7 +1246,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   static async #setVisibility(event, target) {
     const key = rollModeSettingKey();
     if (!game.user.isGM || !key) return;
-    await game.settings.set("core", key, target.dataset.mode);
+    await game.settings.set("core", key, target.dataset.next);
     this.render();
   }
 
@@ -1293,6 +1383,16 @@ class KhvorInitiative extends HandlebarsApplicationMixin(ApplicationV2) {
     super._onRender?.(context, options);
     // По центру свободной области: слева от боковой панели Foundry.
     this.element.style.setProperty("--kh-area-right", `${freeAreaRight()}px`);
+    // Наведение подсвечивает токен на сцене; двойной клик — сделать целью (Shift — добавить к целям).
+    for (const el of this.element.querySelectorAll(".kh-init")) {
+      const token = () => game.combat?.combatants.get(el.dataset.id)?.token?.object;
+      el.addEventListener("mouseenter", (event) => token()?._onHoverIn?.(event, { hoverOutOthers: true }));
+      el.addEventListener("mouseleave", (event) => token()?._onHoverOut?.(event));
+      el.addEventListener("dblclick", (event) => {
+        const t = token();
+        if (t) t.setTarget(!t.isTargeted, { releaseOthers: !event.shiftKey });
+      });
+    }
   }
 
   static #focusCombatant(event, target) {
