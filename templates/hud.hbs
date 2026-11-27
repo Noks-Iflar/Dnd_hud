@@ -113,7 +113,7 @@
 
     <div class="kh-groups">
       {{#each panel.groups}}
-      <div class="kh-group kh-group-{{key}} {{#if stub}}is-stub{{/if}} {{#if active}}is-active{{/if}}">
+      <div class="kh-group kh-group-{{key}} {{#if stub}}is-stub{{/if}} {{#if active}}is-active{{/if}} {{#if spent}}is-economy-spent{{/if}}">
         {{#unless stub}}
         <div class="kh-group-body">
           <div class="kh-tiles" style="--cols: {{cols}}">
@@ -131,11 +131,20 @@
           </div>
         </div>
         {{/unless}}
-        {{!-- Подпись группы — она же фильтр: клик оставляет только эту группу, повторный клик — все --}}
-        <button type="button" class="kh-group-label" data-action="setGroup" data-group="{{key}}" aria-pressed="{{active}}" data-tooltip="{{#if active}}Показать все группы{{else}}Только «{{label}}»{{/if}}">
-          {{#if gem}}<img src="{{@root.assets}}/{{gem}}.png" alt="">{{/if}}
-          <span>{{label}}</span>
-        </button>
+        {{!-- Подпись группы: ромб — экономия действий (в бою гаснет, когда потрачено; клик — вручную),
+             название — фильтр (клик оставляет только эту группу, повторный клик — все) --}}
+        <div class="kh-group-label">
+          {{#if gem}}
+          {{#if @root.inCombat}}
+          <button type="button" class="kh-gem {{#if spent}}is-spent{{/if}}" data-action="toggleEconomy" data-key="{{key}}" data-tooltip="{{#if spent}}{{label}}: потрачено (клик — вернуть){{else}}{{label}}: доступно (клик — отметить потраченным){{/if}}" aria-label="{{label}}: {{#if spent}}потрачено{{else}}доступно{{/if}}">
+            <img src="{{@root.assets}}/{{#if spent}}gem-socket-empty{{else}}{{gem}}{{/if}}.png" alt="">
+          </button>
+          {{else}}
+          <img class="kh-gem-static" src="{{@root.assets}}/{{gem}}.png" alt="">
+          {{/if}}
+          {{/if}}
+          <button type="button" class="kh-group-filter" data-action="setGroup" data-group="{{key}}" aria-pressed="{{active}}" data-tooltip="{{#if active}}Показать все группы{{else}}Только «{{label}}»{{/if}}">{{label}}</button>
+        </div>
       </div>
       {{else}}
       <div class="kh-empty">Нет способностей</div>

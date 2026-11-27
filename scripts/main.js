@@ -427,6 +427,52 @@ function applyRollMode(config) {
   resetRollMode();
 }
 
+/* ---------- Экономия действий ---------- */
+
+/** Ресурсы хода: действие, бонусное действие, реакция (ключи совпадают с группами панели). */
+const ECONOMY_KEYS = ["action", "bonus", "reaction"];
+
+/**
+ * Что потрачено в этот ход. null — актёр не участвует в начатом бою (ромбы просто горят).
+ * Свой учёт — флаг khvor-hud.economy { combatId, action, bonus, reaction } (сколько раз потрачено);
+ * плюс отметки Midi-QOL: флаги midi-qol.actions.bonus / .reaction и состояния bonusaction / reaction.
+ */
+function economyState(actor) {
+  const combat = game.combat;
+  if (!combat?.started || !combatantOf(actor, combat)) return null;
+  const flag = actor.getFlag(MODULE_ID, "economy");
+  const own = flag?.combatId === combat.id ? flag : {};
+  const midi = actor.getFlag("midi-qol", "actions") ?? {};
+  return {
+    action: (own.action ?? 0) > 0,
+    bonus: (own.bonus ?? 0) > 0 || !!midi.bonus || !!actor.statuses?.has("bonusaction"),
+    reaction: (own.reaction ?? 0) > 0 || !!midi.reaction || !!actor.statuses?.has("reaction")
+  };
+}
+
+/** Отметить трату (delta = 1) или вернуть (delta = −1) ресурс хода. Только в бою и только своему актёру. */
+async function spendEconomy(actor, key, delta = 1) {
+  const combat = game.combat;
+  if (!ECONOMY_KEYS.includes(key) || !actor?.isOwner || !combat?.started || !combatantOf(actor, combat)) return;
+  const flag = actor.getFlag(MODULE_ID, "economy");
+  const own = flag?.combatId === combat.id ? { ...flag } : { combatId: combat.id };
+  own[key] = Math.max(0, (own[key] ?? 0) + delta);
+  const update = { [`flags.${MODULE_ID}.economy`]: own };
+  // Возвращая бонусное действие или реакцию, снимаем и отметку Midi, иначе ромб останется пустым.
+  if (delta < 0 && key !== "action") update[`flags.midi-qol.actions.${key}`] = false;
+  await actor.update(update);
+  if (delta < 0 && key !== "action") {
+    const status = key === "bonus" ? "bonusaction" : "reaction";
+    if (actor.statuses?.has(status)) await actor.toggleStatusEffect(status, { active: false });
+  }
+}
+
+/** Начало хода участника — снова доступны действие, бонусное действие и реакция (делает ГМ). */
+async function resetEconomy(combat) {
+  const actor = combat.combatant?.actor;
+  if (actor?.getFlag(MODULE_ID, "economy")) await actor.unsetFlag(MODULE_ID, "economy");
+}
+
 /* ---------- Эффекты базовых действий ---------- */
 
 /** Сокет модуля через socketlib: эффект на чужом актёре создаёт клиент ГМа. */
@@ -602,6 +648,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     actions: {
       openSheet: KhvorHud.#openSheet,
       setGroup: KhvorHud.#setGroup,
+      toggleEconomy: KhvorHud.#toggleEconomy,
       endTurn: KhvorHud.#endTurn,
       rollInitiative: KhvorHud.#rollInitiative,
       openSkills: KhvorHud.#openSkills,
@@ -648,6 +695,9 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       columns: pageColumns()
     });
     // Запоминаем то, что реально показали: вкладка могла исчезнуть, страниц могло стать меньше.
+    // Ромбы экономии действий у групп «Действие / Бонусное / Реакция».
+    const economy = economyState(actor);
+    for (const g of abilities.groups) g.spent = !!economy?.[g.key];
     this.panel.tab = abilities.tab;
     this.panel.group = abilities.group;
     this.panel.page = abilities.page;
@@ -706,6 +756,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
         failure: [0, 1, 2].map((i) => i < (attr.death?.failure ?? 0))
       } : null,
       panel: abilities,
+      inCombat: !!economy,
       endTurn: endTurnState(actor),
       slots: spellSlots(actor)
     };
@@ -928,6 +979,8 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       speaker: ChatMessage.getSpeaker({ actor }),
       content: `<div class="kh-chat-basic"><h3>${basic.label}</h3><p>${basic.rule}</p>${note ? `<p>${note}</p>` : ""}</div>`
     });
+    // Базовое действие тратит «Действие» хода.
+    await spendEconomy(actor, "action");
   }
 
 
@@ -935,6 +988,14 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     this.panel.tab = target.dataset.tab;
     this.panel.page = 0;
     this.render();
+  }
+
+  /** Клик по ромбу группы в бою: отметить действие потраченным или вернуть. */
+  static async #toggleEconomy(event, target) {
+    const actor = this.actor;
+    const key = target.dataset.key;
+    if (!actor?.isOwner) return;
+    await spendEconomy(actor, key, economyState(actor)?.[key] ? -1 : 1);
   }
 
   /** Клик по подписи группы: оставить только её; повторный клик — снова все группы. */
@@ -1072,9 +1133,20 @@ Hooks.once("ready", () => {
   Hooks.on("updateCombat", (combat, changes) => {
     if (!("turn" in changes || "round" in changes) || !game.users.activeGM?.isSelf) return;
     expireBasicEffects(combat);
+    resetEconomy(combat);
+  });
+
+  // Экономия действий: использованная способность тратит действие, бонусное действие или реакцию.
+  // Хук срабатывает только у того, кто использовал способность.
+  Hooks.on("dnd5e.postUseActivity", (activity) => {
+    const actor = activity?.actor;
+    const type = activity?.activation?.type;
+    if (actor && ECONOMY_KEYS.includes(type)) spendEconomy(actor, type);
   });
   Hooks.on("deleteCombat", (combat) => {
-    if (game.users.activeGM?.isSelf) clearCombatEffects(combat);
+    if (!game.users.activeGM?.isSelf) return;
+    clearCombatEffects(combat);
+    for (const c of combat.combatants) if (c.actor?.getFlag(MODULE_ID, "economy")) c.actor.unsetFlag(MODULE_ID, "economy");
   });
   // Свернули или развернули боковую панель, изменили размер окна — пересчитать место и столбцы.
   Hooks.on("collapseSidebar", () => setTimeout(refresh, 300)); // после анимации сворачивания

@@ -498,15 +498,23 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   text-transform: uppercase;
   color: var(--kh-muted);
 }
-.kh-group-label img { width: 14px; height: 14px; object-fit: contain; }
-/* Подпись группы — кнопка-фильтр по типу действия */
-.kh-group-label {
+.kh-group-label img { display: block; width: 14px; height: 14px; object-fit: contain; }
+.kh-group-label { gap: 2px; }
+/* Название группы — кнопка-фильтр по типу действия */
+.kh-group-filter {
   padding: 1px 6px;
   border-radius: 3px;
   transition: color 0.15s, background 0.15s;
 }
-.kh-group-label:hover { color: var(--kh-text); background: #1b1a20; }
-.kh-group.is-active .kh-group-label { color: var(--kh-text); box-shadow: inset 0 -2px 0 var(--kh-blood); }
+.kh-group-filter:hover { color: var(--kh-text); background: #1b1a20; }
+.kh-group.is-active .kh-group-filter { color: var(--kh-text); box-shadow: inset 0 -2px 0 var(--kh-blood); }
+/* Ромб экономии действий: в бою кнопка; потрачено — пустое гнездо */
+.kh-gem { display: block; padding: 2px; border-radius: 3px; transition: filter 0.15s; }
+.kh-gem:hover { filter: brightness(1.4) drop-shadow(0 0 4px rgba(255, 255, 255, 0.4)); }
+.kh-gem.is-spent img { opacity: 0.8; }
+/* Группа, чьё действие в этом ходу потрачено: плитки приглушены, но нажимаются */
+.kh-group.is-economy-spent .kh-tile { opacity: 0.5; }
+.kh-group.is-economy-spent .kh-tile:hover { opacity: 0.85; }
 /* Свёрнутая группа при фильтре: только подпись внизу, приглушённая */
 .kh-group.is-stub { align-self: stretch; justify-content: flex-end; opacity: 0.6; }
 .kh-group.is-stub:hover { opacity: 1; }
