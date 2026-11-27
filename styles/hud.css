@@ -268,15 +268,14 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 /* ---------- Панель: две строки — кнопки и режим броска сверху, цифры и действия снизу ---------- */
 .kh-panel {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 0 4px 0 30px; /* слева место под край сферы */
+  align-items: center;
+  gap: 9px;
+  padding: 0 2px 0 26px; /* слева место под край сферы */
   border-style: solid;
   border-width: 16px;
   border-image: url("../assets/panel-frame.png") 64 fill / 16px / 0 stretch;
 }
-.kh-panel-top { display: flex; align-items: center; gap: 5px; }
-.kh-panel-top .kh-seg { margin: 0 6px; }
+.kh-panel-btns { display: grid; grid-template-columns: repeat(2, 28px); gap: 3px; }
 .kh-icon-btn {
   display: block;
   width: 28px;
@@ -287,7 +286,6 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-icon-btn img { display: block; width: 100%; height: 100%; }
 .kh-icon-btn:hover { filter: brightness(1.3) drop-shadow(0 0 6px rgba(127, 179, 255, 0.6)); transform: translateY(-1px); }
 
-.kh-panel-body { display: flex; align-items: center; gap: 12px; }
 
 /* КБ в щите */
 .kh-ac {
@@ -306,19 +304,19 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-ac-label { font-size: 10px; color: var(--kh-muted); }
 
 /* СЛ и инициатива столбиком: число крупно, подпись мелко справа */
-.kh-stats { display: flex; flex-direction: column; gap: 4px; }
-.kh-stat { display: flex; align-items: baseline; gap: 5px; }
+.kh-stats { display: flex; flex-direction: column; gap: 3px; }
+.kh-stat { display: flex; align-items: baseline; gap: 4px; }
 .kh-stat-value { min-width: 26px; font-family: var(--kh-serif); font-weight: 700; font-size: 20px; line-height: 1; white-space: nowrap; }
 .kh-stat-value small { font-family: var(--kh-sans); font-size: 12px; color: var(--kh-muted); }
 .kh-stat-label { font-size: 11px; color: var(--kh-muted); white-space: nowrap; }
 
 /* Скорость и полоска остатка движения (как в BG3): деление — 5 фт */
-.kh-move { display: flex; flex-direction: column; gap: 3px; }
+.kh-move { display: flex; flex-direction: column; gap: 3px; margin-bottom: 2px; }
 .kh-move-value { font-family: var(--kh-serif); font-weight: 700; font-size: 20px; line-height: 1; white-space: nowrap; }
 .kh-move-value small { font-family: var(--kh-sans); font-size: 12px; font-weight: 400; color: var(--kh-muted); }
 .kh-move-bar { display: flex; gap: 2px; }
 .kh-move-bar i {
-  width: 9px;
+  width: 8px;
   height: 5px;
   border-radius: 1px;
   background: #1d1c22;
@@ -487,6 +485,17 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   color: var(--kh-muted);
 }
 .kh-group-label img { width: 14px; height: 14px; object-fit: contain; }
+/* Подпись группы — кнопка-фильтр по типу действия */
+.kh-group-label {
+  padding: 1px 6px;
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s;
+}
+.kh-group-label:hover { color: var(--kh-text); background: #1b1a20; }
+.kh-group.is-active .kh-group-label { color: var(--kh-text); box-shadow: inset 0 -2px 0 var(--kh-blood); }
+/* Свёрнутая группа при фильтре: только подпись внизу, приглушённая */
+.kh-group.is-stub { align-self: stretch; justify-content: flex-end; opacity: 0.6; }
+.kh-group.is-stub:hover { opacity: 1; }
 
 /* Базовые действия: сетка 3 × 2 в левом блоке, под переключателем броска */
 .kh-basic {
@@ -629,3 +638,44 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 /* Значок круга заклинания на плитке: синий, у договора фиолетовый */
 .kh-badge.is-level { font-family: var(--kh-serif); font-size: 13px; color: var(--kh-arcane); }
 .kh-badge.is-level.is-pact { color: var(--kh-violet); }
+
+/* ---------- Правый блок: режим броска, базовые действия 3 × 2, «Завершить ход» (в бою) ---------- */
+.kh-right {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  pointer-events: auto;
+  border-style: solid;
+  border-width: 14px;
+  border-image: url("../assets/panel-frame.png") 64 fill / 14px / 0 stretch;
+}
+.kh-right .kh-basic {
+  grid-template-columns: repeat(3, 1fr);
+  justify-items: center;
+  gap: 5px;
+}
+.kh-right .kh-basic-btn { width: 36px; height: 36px; }
+
+.kh-end-turn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 5px 6px;
+  border: 1px solid var(--kh-blood);
+  border-radius: 4px;
+  background: linear-gradient(#3a141a, #1e0a0e);
+  box-shadow: 0 0 0 1px #000, 0 0 10px rgba(216, 50, 63, 0.35);
+  font-family: var(--kh-serif);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #ffe1e4;
+}
+.kh-end-turn:hover:not(:disabled) { background: linear-gradient(#52141e, #2a0c12); box-shadow: 0 0 0 1px #000, 0 0 14px rgba(216, 50, 63, 0.6); }
+.kh-end-turn.is-waiting { border-color: var(--kh-iron); background: #121116; box-shadow: 0 0 0 1px #000; color: #6e6a78; cursor: default; }
+/* Базовое действие с активным эффектом (Рывок в этот ход, Уклонение до следующего хода…) */
+.kh-basic-btn.is-active {
+  box-shadow: 0 0 0 2px #ffa64d, 0 0 8px rgba(255, 166, 77, 0.7);
+  filter: brightness(1.2);
+}
