@@ -57,14 +57,19 @@
 | Действие / бонусное / реакция | `#ff4d5e` / `#ffa64d` / `#4dd6c8` |
 | Союзник / враг в инициативе | `#3f6fb0` / `#8e1420` |
 
-Шрифты: Cormorant Garamond (числа, имена, заголовки), Alegreya Sans и Alegreya Sans SC (подписи). Сейчас грузятся из Google Fonts; позже упаковать локально.
+Шрифты: Cormorant Garamond (числа, имена, заголовки), Alegreya Sans и Alegreya Sans SC (подписи). Лежат в `fonts/` (woff2, кириллица и латиница, SIL OFL 1.1), подключены `@font-face` в начале `hud.css`.
 
 ## Файлы
 
 ```
-module.json            id "khvor-hud", esmodules + styles
-scripts/main.js        класс KhvorHud (ApplicationV2 + HandlebarsApplicationMixin), настройки, хуки
+module.json            id "khvor-hud", esmodules + styles, languages, "socket": true, manifest/download — последний релиз на GitHub
+scripts/main.js        KhvorHud (нижний HUD), KhvorInitiative (полоса инициативы), KhvorSkills (окно навыков); настройки, хуки
 templates/hud.hbs      разметка HUD; один корневой <div class="kh-root">
+templates/initiative.hbs  полоса инициативы
+templates/skills.hbs   окно «Проверки и навыки»
+lang/ru.json, en.json  названия настроек и состояния «Хвор»
+fonts/                 локальные шрифты и их лицензии
+.github/workflows/release.yml  релиз vX.Y.Z (module.zip + module.json) при смене версии в main
 styles/hud.css         стили; все классы с префиксом kh-
 assets/                нарезанная графика (PNG с прозрачностью) и manifest.json
 docs/                  PNG-макеты HUD (игрок и ГМ)
@@ -142,16 +147,20 @@ tools/cut.py           нарезка листов Gemini на отдельны�
 - Помощь — нужна ровно одна цель (T). Цель-враг: эффект с `flags.midi-qol.grants.advantage.attack.all`, `flags.dae.specialDuration: ["isAttacked"]`; цель-союзник: `flags.midi-qol.advantage.ability.check.all`, `["isCheck", "isSkill"]`. Плюс снятие HUD в начале следующего хода помощника. Эффект на чужом актёре создаёт ГМ через socketlib (`module.json`: `"socket": true`, socketlib в recommends; `socket.executeAsGM("createEffect", uuid, data)`).
 - Сроки: флаг `flags.khvor-hud.expire = { combatId, combatantId, when, round, turn }`. `expireBasicEffects()` на `updateCombat` (смена хода/раунда) и `clearCombatEffects()` на `deleteCombat` выполняет только `game.users.activeGM`. Вне боя эффекты без срока — снимаются повторным кликом.
 
-## Дальше, по порядку
+Ночная партия v0.3.0 (Нокс проверит всё разом):
+1. Режим броска: «Преим. / Помеха» — на следующий бросок d20 актёра HUD, потом переключатель сам возвращается на «Обычн.». Атаки с плиток — `activity.use({ midiOptions: { advantage|disadvantage: true } })`; остальное — хуки `dnd5e.preRollD20TestV2` и `dnd5e.preRollAttackV2` ставят `config.advantage/disadvantage` (`applyRollMode()`, флаг `config.khvorRollMode` от повтора).
+2. Экономия действий: `economyState()` = свой флаг `khvor-hud.economy { combatId, action, bonus, reaction }` + Midi (`flags.midi-qol.actions.bonus/.reaction`, состояния `bonusaction`/`reaction`). Трата — хук `dnd5e.postUseActivity` по `activation.type`, базовые действия тратят «Действие». Сброс — `resetEconomy()` у активного ГМа при смене хода. Ромб в подписи группы — кнопка `toggleEconomy` (в бою), потраченная группа — пустое гнездо и приглушённые плитки (`is-economy-spent`).
+3. Полоса инициативы `KhvorInitiative` (`#khvor-initiative`, вверху, по центру свободной области): `combat.turns`, портрет `actor.img` в `initiative-frame`, подложка цвета стороны (союзник `#3f6fb0`, враг `#8e1420`), полоска ПЗ (врагов и нейтралов — только ГМу), текущий ход крупнее с ромбом и свечением, побеждённые серые, скрытые — только ГМу. Клик — `canvas.animatePan` и выделение своего токена. Настройка `showInitiative`.
+4. Ряд эффектов над левой панелью (`effectsRow()`): концентрация из `actor.concentration.effects` — плашка (название заклинания по `origin`, раунды, «прервать» = `actor.endConcentration(effect)`); `actor.temporaryEffects` и эффекты базовых действий — иконки 30 px с раундами и крестиком (`effect.delete()`); снимать может владелец и ГМ. Раунды — `effectRounds()` по `effect.duration` (turns / seconds).
+5. Окно навыков `KhvorSkills` (`#khvor-skills`): характеристики (`abilities.*.mod`, `save.value`, `proficient`), навыки (`skills.*.total`, `value` 0 / 0.5 / 1 / 2, `passive`), подписи из `CONFIG.DND5E.abilities/skills`; клик — `rollAbilityCheck` / `rollSavingThrow` / `rollSkill`. Кнопка «Навыки» открывает и закрывает, окно следует за актёром HUD.
+6. Режим ГМа: ромбы «Легендарные» в полосе средней панели (`resources.legact`, клик — `spent` ±1) и «сопр.» в левой панели (`resources.legres`, клик по горящему — `resistanceActivity()` или `spent` +1); «Открыто / Скрыто» в правом блоке только ГМу — `core.rollMode` (`publicroll` / `gmroll`), скрыт, если такой настройки нет.
+7. Доделки: состояние «Хвор» в `CONFIG.statusEffects` (`id: "khvor"`, иконка `status-khvor.png`); шрифты локально; `lang/ru.json` и `en.json`; релиз через GitHub Actions, установка по ссылке `…/releases/latest/download/module.json`.
 
-1. **Режим броска в бросок**: «Преим. / Помеха» в правом блоке реально влияет на атаки, проверки и спасброски (сейчас только запоминается). С учётом Midi-QOL.
-2. **Экономия действий**: ромбы под группами «Действие / Бонусное / Реакция» гаснут при трате и загораются в начале хода; базовые действия и плитки тратят своё. Сначала проверить, что Midi уже отмечает сам (состояния `bonusaction`, `reaction`).
-3. **Полоса инициативы** сверху экрана: портреты в `initiative-frame` с полоской ПЗ, текущий ход крупнее с красным свечением, союзники синие, враги красные, клик — камера на токен.
-4. **Ряд эффектов** над левым блоком: концентрация — плашка с названием, раундами и крестиком «прервать»; остальные — иконки 30 px с числом раундов и крестиком «снять» (игрок — только свои, ГМ — любые).
-5. **Окно навыков** (кнопка «Навыки» уже есть, пока заглушка): характеристики, спасброски, 18 навыков, пассивная внимательность; клик — бросок.
-6. **Режим ГМа для NPC**: ромбы легендарных действий над панелью, легендарное сопротивление в левом блоке, переключатель «открытые / скрытые броски».
-7. **Наборы оружия I/II** из макета — уточнить у Нокса, нужны ли.
-8. **Доделки**: статус «Хвор» как состояние Foundry с иконкой `status-khvor.png`; шрифты локально (без Google Fonts); `lang/ru.json`; сборка архива и установка модуля по ссылке через GitHub Actions.
+## Дальше
+
+1. **Проверка ночной партии v0.3.0** Ноксом и правки по ней.
+2. **Наборы оружия I/II** из макета — уточнить у Нокса, нужны ли.
+3. Мелкие пожелания по ходу игры.
 
 ## Макет
 
