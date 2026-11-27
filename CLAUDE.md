@@ -13,8 +13,8 @@
 ## Окружение
 
 - Foundry VTT **V14** (14.370), система **D&D 5e 6.1.1**, правила 2024 года, русская локализация (модули Russian Translation и Babele).
-- **Midi-QOL не используется**: установлен (14.0.20), но рассчитан на dnd5e до 5.9.99 и с 6.1.1 не работает. Автоматизацию строить на средствах dnd5e 6.x (например, режимы броска эффектами: `abilities.*.check.roll.mode`, `save.roll.mode`, `attack.roll.mode`, `skills.*.roll.mode`, 1 — преимущество, −1 — помеха), без флагов Midi.
-- Важные соседние модули: DAE, Automated Conditions 5e, Simple Cover 5e, Sequencer, JB2A (Patreon), Automated Animations, Token Magic FX, Tidy 5e Sheets, DFreds Convenient Effects, Item Piles, Glyph.
+- **Midi-QOL 14.7.1 включён** (поддерживает dnd5e 6.1.x; требует DAE ≥ 14.6.10, DAE обновлён). Автоматизацию базовых действий строить с учётом Midi: не дублировать то, что Midi делает сам (уклонение, помощь, преимущество/помеха через флаги `flags.midi-qol.*`). Встроенные режимы броска dnd5e (`abilities.*.check.roll.mode` и т. п., 1 — преимущество, −1 — помеха) тоже доступны.
+- Важные соседние модули: Midi-QOL, DAE, Automated Conditions 5e, Simple Cover 5e, Sequencer, JB2A (Patreon), Automated Animations, Token Magic FX, Tidy 5e Sheets, DFreds Convenient Effects, Item Piles, Glyph.
 - Кампания: 3 игрока 9-го уровня (Дайдэн — дроу, бард, ставший колдуном; Муарен — плут; Мерик — воин). У ГМа много NPC, в том числе существа с Хвором (магической заразой мира).
 
 ## Принципы HUD (утверждены Ноксом)
@@ -85,7 +85,7 @@ tools/cut.py           нарезка листов Gemini на отдельны�
 - Сброс стилей кнопок Foundry — через `:where(#khvor-hud) button { all: unset }`: `:where` обнуляет вес селектора, иначе он перебивает классы `.kh-*`.
 - Настройки: `rollMode` (client, скрытая), `hideHotbar` (прятать стандартную панель макросов, пока HUD открыт).
 - Данные dnd5e: ПЗ `system.attributes.hp` (`effectiveMax ?? max`), КБ `attributes.ac.value` (в 6.x исходные формулы лежат в `ac.calcs`, но итог — в `ac.value`), инициатива `attributes.init.total`, скорость `attributes.movement.walk` и `.units`, СЛ `attributes.spell.dc` при заданном `attributes.spellcasting`, пассивная внимательность `skills.prc.passive`. Хвор: статус `khvor` или эффект со словом «Хвор» в названии.
-- Использование способностей — через активности dnd5e (`activity.use()` / `item.use()`).
+- Использование способностей — через активности dnd5e (`activity.use()` / `item.use()`): Midi-QOL подхватывает это сам.
 
 ## Готово (v0.1.x)
 
