@@ -77,7 +77,7 @@ const TABS = [
  */
 const TILE_WIDTH = 53;        // плитка 50 px + промежуток
 const HUD_LEFT = 12;          // отступ HUD от левого края (hud.css)
-const LEFT_BLOCK_WIDTH = 470; // портрет, сфера и левая панель
+const LEFT_BLOCK_WIDTH = 485; // портрет, сфера и левая панель
 const RIGHT_RESERVE = 210;    // правый блок: режим броска и базовые действия
 const PANEL_EXTRAS = 160;     // рамка панели, разделители групп, отступы
 const COLUMNS_MIN = 5;

@@ -268,14 +268,14 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 /* ---------- Панель: две строки — кнопки и режим броска сверху, цифры и действия снизу ---------- */
 .kh-panel {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 0 4px 0 30px; /* слева место под край сферы */
+  align-items: center;
+  gap: 9px;
+  padding: 0 2px 0 26px; /* слева место под край сферы */
   border-style: solid;
   border-width: 16px;
   border-image: url("../assets/panel-frame.png") 64 fill / 16px / 0 stretch;
 }
-.kh-panel-top { display: flex; align-items: center; gap: 5px; }
+.kh-panel-btns { display: grid; grid-template-columns: repeat(2, 28px); gap: 3px; }
 .kh-icon-btn {
   display: block;
   width: 28px;
@@ -286,7 +286,6 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-icon-btn img { display: block; width: 100%; height: 100%; }
 .kh-icon-btn:hover { filter: brightness(1.3) drop-shadow(0 0 6px rgba(127, 179, 255, 0.6)); transform: translateY(-1px); }
 
-.kh-panel-body { display: flex; align-items: center; gap: 12px; }
 
 /* КБ в щите */
 .kh-ac {
@@ -305,19 +304,19 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-ac-label { font-size: 10px; color: var(--kh-muted); }
 
 /* СЛ и инициатива столбиком: число крупно, подпись мелко справа */
-.kh-stats { display: flex; flex-direction: column; gap: 4px; }
-.kh-stat { display: flex; align-items: baseline; gap: 5px; }
+.kh-stats { display: flex; flex-direction: column; gap: 3px; }
+.kh-stat { display: flex; align-items: baseline; gap: 4px; }
 .kh-stat-value { min-width: 26px; font-family: var(--kh-serif); font-weight: 700; font-size: 20px; line-height: 1; white-space: nowrap; }
 .kh-stat-value small { font-family: var(--kh-sans); font-size: 12px; color: var(--kh-muted); }
 .kh-stat-label { font-size: 11px; color: var(--kh-muted); white-space: nowrap; }
 
 /* Скорость и полоска остатка движения (как в BG3): деление — 5 фт */
-.kh-move { display: flex; flex-direction: column; gap: 3px; }
+.kh-move { display: flex; flex-direction: column; gap: 3px; margin-bottom: 2px; }
 .kh-move-value { font-family: var(--kh-serif); font-weight: 700; font-size: 20px; line-height: 1; white-space: nowrap; }
 .kh-move-value small { font-family: var(--kh-sans); font-size: 12px; font-weight: 400; color: var(--kh-muted); }
 .kh-move-bar { display: flex; gap: 2px; }
 .kh-move-bar i {
-  width: 9px;
+  width: 8px;
   height: 5px;
   border-radius: 1px;
   background: #1d1c22;

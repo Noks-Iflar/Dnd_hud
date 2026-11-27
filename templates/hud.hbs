@@ -39,9 +39,27 @@
       {{#if hp.temp}}<div class="kh-temp" data-tooltip="Временные ПЗ">+{{hp.temp}}</div>{{/if}}
     </div>
 
+    {{!-- Левая панель в три столбца: щит КБ | скорость, СЛ, инициатива | кнопки 2 × 2 --}}
     <div class="kh-panel">
-      {{!-- Верхний ряд: инициатива, навыки, отдых --}}
-      <div class="kh-panel-top">
+      <div class="kh-ac" data-tooltip="Класс брони">
+        <span class="kh-ac-value">{{ac}}</span>
+        <span class="kh-ac-label">КБ</span>
+      </div>
+      <div class="kh-stats">
+        <div class="kh-move" data-tooltip="{{#if move.tracked}}Движение в этот ход: осталось {{move.left}} из {{move.total}} {{units}}{{else}}Скорость{{/if}}">
+          <span class="kh-move-value">{{#if move.tracked}}{{move.left}}<small>/{{move.total}}</small>{{else}}{{move.total}}{{/if}} <small>{{units}}</small></span>
+          <span class="kh-move-bar">{{#each move.segments}}<i class="{{#if this}}on{{/if}}"></i>{{/each}}</span>
+        </div>
+        <div class="kh-stat" data-tooltip="{{extra.label}}">
+          <span class="kh-stat-value">{{extra.value}}</span>
+          <span class="kh-stat-label">{{extra.short}}</span>
+        </div>
+        <div class="kh-stat" data-tooltip="Инициатива">
+          <span class="kh-stat-value">{{init}}</span>
+          <span class="kh-stat-label">иниц.</span>
+        </div>
+      </div>
+      <div class="kh-panel-btns">
         <button type="button" class="kh-icon-btn" data-action="rollInitiative" data-tooltip="Бросить инициативу" aria-label="Бросить инициативу">
           <img src="{{assets}}/icon-initiative.png" alt="">
         </button>
@@ -56,29 +74,6 @@
           <img src="{{assets}}/icon-long-rest.png" alt="">
         </button>
         {{/if}}
-      </div>
-
-      {{!-- Нижний ряд: КБ, СЛ и инициатива, скорость с полоской движения --}}
-      <div class="kh-panel-body">
-        <div class="kh-ac" data-tooltip="Класс брони">
-          <span class="kh-ac-value">{{ac}}</span>
-          <span class="kh-ac-label">КБ</span>
-        </div>
-        <div class="kh-stats">
-          <div class="kh-stat" data-tooltip="{{extra.label}}">
-            <span class="kh-stat-value">{{extra.value}}</span>
-            <span class="kh-stat-label">{{extra.short}}</span>
-          </div>
-          <div class="kh-stat" data-tooltip="Инициатива">
-            <span class="kh-stat-value">{{init}}</span>
-            <span class="kh-stat-label">иниц.</span>
-          </div>
-        </div>
-        <div class="kh-move" data-tooltip="{{#if move.tracked}}Движение в этот ход: осталось {{move.left}} из {{move.total}} {{units}}{{else}}Скорость{{/if}}">
-          <span class="kh-move-value">{{#if move.tracked}}{{move.left}}<small>/{{move.total}}</small>{{else}}{{move.total}}{{/if}} <small>{{units}}</small></span>
-          <span class="kh-move-bar">{{#each move.segments}}<i class="{{#if this}}on{{/if}}"></i>{{/each}}</span>
-          <span class="kh-stat-label">скорость</span>
-        </div>
       </div>
     </div>
   </div>
