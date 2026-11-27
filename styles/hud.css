@@ -891,3 +891,92 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 }
 .kh-effect:hover .kh-x,
 .kh-effect .kh-x:focus-visible { opacity: 1; }
+
+/* ---------- Панель «Проверки и навыки» (над левой частью HUD) ---------- */
+#khvor-skills {
+  position: fixed;
+  left: 170px;
+  bottom: 250px;
+  z-index: 70;
+}
+.kh-skills {
+  width: 640px;
+  padding: 4px 6px 6px;
+  border-style: solid;
+  border-width: 16px;
+  border-image: url("../assets/panel-frame.png") 64 fill / 16px / 0 stretch;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.7));
+}
+.kh-skills-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.kh-skills-head h2 {
+  margin: 0;
+  border: 0;
+  font-family: var(--kh-serif);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--kh-text);
+}
+.kh-skills-name { font-size: 12px; color: var(--kh-muted); }
+.kh-skills-passive { margin-left: auto; font-size: 12px; color: var(--kh-muted); }
+.kh-skills-passive b { font-family: var(--kh-serif); font-size: 18px; color: var(--kh-text); }
+.kh-skills-head .kh-x { align-self: center; width: 24px; height: 24px; border: 1px solid var(--kh-iron); font-size: 16px; }
+
+.kh-abls { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 10px; }
+.kh-abl {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border: 1px solid #34323b;
+  border-radius: 4px;
+  background: radial-gradient(circle at 50% 20%, #1f1d24, #0e0d11);
+}
+.kh-abl-check { display: flex; flex-direction: column; align-items: center; padding: 0 6px; border-radius: 3px; }
+.kh-abl-check:hover { background: #1b1a20; }
+.kh-abl-abbr { font-family: "Alegreya Sans SC", var(--kh-sans); font-size: 11px; font-weight: 700; color: var(--kh-muted); }
+.kh-abl-mod { font-family: var(--kh-serif); font-size: 24px; font-weight: 700; line-height: 1.05; font-variant-numeric: lining-nums; }
+.kh-abl-save {
+  padding: 1px 8px;
+  border: 1px solid var(--kh-iron);
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--kh-muted);
+  font-variant-numeric: lining-nums;
+}
+.kh-abl-save:hover { color: var(--kh-text); background: #1b1a20; }
+.kh-abl-save.is-prof { border-color: var(--kh-arcane); color: #cfe0ff; box-shadow: 0 0 6px rgba(127, 179, 255, 0.35); }
+
+.kh-skill-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(6, auto);
+  grid-auto-flow: column;
+  gap: 2px 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(74, 72, 82, 0.6);
+}
+.kh-skill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 13px;
+}
+.kh-skill:hover { background: #1b1a20; }
+.kh-skill-prof {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  border: 1px solid #4a4852;
+}
+.kh-skill.is-half .kh-skill-prof { background: linear-gradient(90deg, var(--kh-arcane) 50%, transparent 50%); border-color: var(--kh-arcane); }
+.kh-skill.is-prof .kh-skill-prof { background: var(--kh-arcane); border-color: var(--kh-arcane); }
+.kh-skill.is-expert .kh-skill-prof { background: var(--kh-violet); border-color: #e3d6ff; box-shadow: 0 0 5px var(--kh-violet); }
+.kh-skill.is-prof,
+.kh-skill.is-expert { background: rgba(127, 179, 255, 0.06); }
+.kh-skill-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kh-skill-name small { font-size: 10px; color: var(--kh-muted); }
+.kh-skill-total { font-weight: 700; font-variant-numeric: lining-nums tabular-nums; }

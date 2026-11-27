@@ -1110,8 +1110,12 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     return actor.rollDeathSave({ event });
   }
 
+  /** Кнопка «Навыки»: открыть или закрыть панель «Проверки и навыки». */
   static #openSkills() {
-    ui.notifications.info("Окно навыков появится в следующей версии HUD.");
+    const skills = game.modules.get(MODULE_ID).api?.skills;
+    if (!skills) return;
+    if (skills.rendered) return skills.close();
+    return skills.render({ force: true });
   }
 
   static async #setRollMode(event, target) {
@@ -1192,6 +1196,93 @@ class KhvorInitiative extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 }
 
+/* ---------- Окно навыков ---------- */
+
+/** Подписи владения навыком по множителю dnd5e (skills.*.value: 0, 0.5, 1, 2). */
+const PROFICIENCY = { 0.5: ["is-half", "половина бонуса"], 1: ["is-prof", "владение"], 2: ["is-expert", "компетентность"] };
+
+/**
+ * Панель «Проверки и навыки» над HUD (кнопка «Навыки» в левой панели): характеристики с проверкой
+ * и спасброском, 18 навыков, пассивная внимательность. Клик — бросок dnd5e
+ * (rollAbilityCheck / rollSavingThrow / rollSkill), режим «Преим. / Помеха» тоже действует.
+ */
+class KhvorSkills extends HandlebarsApplicationMixin(ApplicationV2) {
+  static DEFAULT_OPTIONS = {
+    id: "khvor-skills",
+    tag: "section",
+    window: { frame: false, positioned: false },
+    actions: {
+      rollCheck: KhvorSkills.#rollCheck,
+      rollSave: KhvorSkills.#rollSave,
+      rollSkill: KhvorSkills.#rollSkill,
+      closeSkills: KhvorSkills.#closeSkills
+    }
+  };
+
+  static PARTS = {
+    skills: { template: `modules/${MODULE_ID}/templates/skills.hbs` }
+  };
+
+  /** Актёр — тот же, что сейчас в HUD. */
+  get actor() {
+    return game.modules.get(MODULE_ID).api?.hud?.actor ?? null;
+  }
+
+  async _prepareContext() {
+    const actor = this.actor;
+    if (!actor) return { actor: false };
+    const sys = actor.system;
+    const ABL = CONFIG.DND5E.abilities;
+    const abilities = Object.keys(ABL).filter((k) => sys.abilities?.[k]).map((key) => {
+      const a = sys.abilities[key];
+      const save = typeof a.save === "object" ? a.save?.value : a.save;
+      return {
+        key,
+        abbr: ABL[key].abbreviation ?? key,
+        label: ABL[key].label ?? key,
+        mod: signed(a.mod ?? 0),
+        save: signed(save ?? a.mod ?? 0),
+        saveProf: (a.proficient ?? 0) >= 1
+      };
+    });
+    const skills = Object.entries(CONFIG.DND5E.skills)
+      .filter(([key]) => sys.skills?.[key])
+      .map(([key, cfg]) => {
+        const s = sys.skills[key];
+        const [profClass, profLabel] = PROFICIENCY[s.value] ?? ["", ""];
+        const ability = s.ability ?? cfg.ability;
+        return {
+          key,
+          label: cfg.label ?? key,
+          abbr: ABL[ability]?.abbreviation ?? ability,
+          abilityLabel: ABL[ability]?.label ?? ability,
+          total: signed(s.total ?? s.mod ?? 0),
+          passive: s.passive ?? "—",
+          profClass,
+          profLabel
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label, "ru"));
+    return { actor: true, name: actor.name, passive: sys.skills?.prc?.passive ?? "—", abilities, skills };
+  }
+
+  static #rollCheck(event, target) {
+    return this.actor?.rollAbilityCheck({ ability: target.dataset.ability, event });
+  }
+
+  static #rollSave(event, target) {
+    return this.actor?.rollSavingThrow({ ability: target.dataset.ability, event });
+  }
+
+  static #rollSkill(event, target) {
+    return this.actor?.rollSkill({ skill: target.dataset.skill, event });
+  }
+
+  static #closeSkills() {
+    return this.close();
+  }
+}
+
 /* ---------- Подключение к Foundry ---------- */
 
 Hooks.once("init", () => {
@@ -1258,12 +1349,20 @@ Hooks.once("socketlib.ready", () => {
 Hooks.once("ready", () => {
   const hud = new KhvorHud();
   const initiative = new KhvorInitiative();
-  game.modules.get(MODULE_ID).api = { hud, initiative };
+  const skills = new KhvorSkills();
+  game.modules.get(MODULE_ID).api = { hud, initiative, skills };
   document.body.classList.toggle("khvor-hide-hotbar", game.settings.get(MODULE_ID, "hideHotbar"));
   document.body.classList.toggle("khvor-hide-players", game.settings.get(MODULE_ID, "hidePlayers"));
 
   // Перерисовка не чаще раза в 50 мс, даже если событий много подряд.
-  const refresh = foundry.utils.debounce(() => hud.render({ force: true }), 50);
+  const refresh = foundry.utils.debounce(async () => {
+    await hud.render({ force: true });
+    // Открытая панель навыков следует за актёром HUD; нет актёра — закрывается.
+    if (skills.rendered) {
+      if (hud.actor) skills.render();
+      else skills.close();
+    }
+  }, 50);
   const hooks = [
     "canvasReady", "controlToken", "updateToken", "updateActor", "updateCombat", "deleteCombat", "combatStart",
     "createItem", "updateItem", "deleteItem",
