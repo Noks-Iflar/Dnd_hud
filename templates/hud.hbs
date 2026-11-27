@@ -41,6 +41,30 @@
 
     {{!-- Левая панель в три столбца: щит КБ | скорость, СЛ, инициатива | кнопки 2 × 2 --}}
     <div class="kh-panel">
+      {{!-- Ряд эффектов над панелью: концентрация плашкой, остальное иконками; крестик — снять --}}
+      {{#if effects.show}}
+      <div class="kh-effects">
+        {{#each effects.concentration}}
+        <div class="kh-conc-plaque" data-tooltip="Концентрация: {{name}}">
+          <img src="{{@root.assets}}/status-concentration.png" alt="">
+          <span class="kh-conc-name">{{name}}</span>
+          {{#if rounds}}<span class="kh-conc-rounds">{{rounds}} р.</span>{{/if}}
+          {{#if @root.effects.canRemove}}
+          <button type="button" class="kh-x" data-action="removeEffect" data-uuid="{{uuid}}" data-conc="1" data-tooltip="Прервать концентрацию" aria-label="Прервать концентрацию">×</button>
+          {{/if}}
+        </div>
+        {{/each}}
+        {{#each effects.list}}
+        <div class="kh-effect" data-tooltip="{{tooltip}}">
+          <img src="{{img}}" alt="">
+          {{#if rounds}}<span class="kh-effect-rounds">{{rounds}}</span>{{/if}}
+          {{#if @root.effects.canRemove}}
+          <button type="button" class="kh-x" data-action="removeEffect" data-uuid="{{uuid}}" data-tooltip="Снять: {{name}}" aria-label="Снять: {{name}}">×</button>
+          {{/if}}
+        </div>
+        {{/each}}
+      </div>
+      {{/if}}
       <div class="kh-ac" data-tooltip="Класс брони">
         <span class="kh-ac-value">{{ac}}</span>
         <span class="kh-ac-label">КБ</span>

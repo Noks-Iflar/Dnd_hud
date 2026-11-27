@@ -288,6 +288,7 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 
 /* ---------- Панель: две строки — кнопки и режим броска сверху, цифры и действия снизу ---------- */
 .kh-panel {
+  position: relative; /* для ряда эффектов над панелью */
   display: flex;
   align-items: center;
   gap: 9px;
@@ -809,3 +810,84 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 }
 .kh-init.is-defeated { opacity: 0.4; filter: grayscale(1); }
 .kh-init.is-hidden { opacity: 0.55; }
+
+/* ---------- Ряд эффектов над левой панелью ---------- */
+.kh-effects {
+  position: absolute;
+  bottom: calc(100% + 22px); /* над верхней рамкой панели */
+  left: 24px;
+  display: flex;
+  flex-wrap: wrap-reverse;
+  align-items: center;
+  gap: 5px;
+  width: max-content;
+  max-width: 250px; /* не шире левой панели; лишнее переносится строкой выше */
+  z-index: 5;
+}
+.kh-conc-plaque {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 4px 0 3px;
+  border: 1px solid #6b3fa0;
+  border-radius: 4px;
+  background: linear-gradient(#1e1628, #0e0a14);
+  box-shadow: 0 0 0 1px #000, 0 0 8px rgba(180, 140, 255, 0.35);
+  font-size: 12px;
+}
+.kh-conc-plaque img { width: 22px; height: 22px; border-radius: 3px; }
+.kh-conc-name { max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #e3d6ff; }
+.kh-conc-rounds { font-size: 11px; color: var(--kh-muted); white-space: nowrap; }
+.kh-effect {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--kh-iron);
+  border-radius: 4px;
+  background: #0e0d11;
+  box-shadow: 0 0 0 1px #000;
+}
+.kh-effect img { display: block; width: 100%; height: 100%; border-radius: 3px; object-fit: cover; }
+.kh-effect-rounds {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 14px;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: #0c0b0e;
+  box-shadow: 0 0 0 1px #000;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+  font-variant-numeric: lining-nums;
+}
+/* Крестик «снять / прервать»: у иконки — в углу при наведении, у плашки — всегда */
+.kh-x {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 14px;
+  line-height: 1;
+  color: #ff7d88;
+}
+.kh-x:hover { background: #3a141a; color: #fff; }
+.kh-effect .kh-x {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 14px;
+  height: 14px;
+  background: #3a141a;
+  box-shadow: 0 0 0 1px #000;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.kh-effect:hover .kh-x,
+.kh-effect .kh-x:focus-visible { opacity: 1; }

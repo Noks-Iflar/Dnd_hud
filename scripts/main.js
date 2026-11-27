@@ -427,6 +427,66 @@ function applyRollMode(config) {
   resetRollMode();
 }
 
+/* ---------- Ряд эффектов над левой панелью ---------- */
+
+/** Сколько раундов осталось у эффекта (null — без срока или неизвестно). */
+function effectRounds(effect) {
+  try {
+    const d = effect.duration;
+    if (!d || !Number.isFinite(d.remaining)) return null;
+    if (d.type === "turns") return Math.max(0, Math.ceil(d.remaining));
+    if (d.type === "seconds") return Math.max(0, Math.ceil(d.remaining / (CONFIG.time?.roundTime || 6)));
+  } catch {
+    // у эффекта нет понятной длительности
+  }
+  return null;
+}
+
+/** Текст подсказки без HTML: описание эффекта бывает с разметкой. */
+const plainText = (html) => (html ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+
+/** Название заклинания, на котором держится концентрация (по origin эффекта), иначе имя эффекта. */
+function concentrationName(effect) {
+  try {
+    const origin = effect.origin ? fromUuidSync(effect.origin) : null;
+    const item = origin?.item ?? origin;
+    if (item?.name) return ruName(item.name);
+  } catch {
+    // origin в компендиуме или удалён
+  }
+  return ruName(effect.getFlag?.("dnd5e", "item")?.data?.name ?? effect.name);
+}
+
+/**
+ * Эффекты для ряда над панелью: концентрация отдельно (плашки), остальное — временные эффекты актёра
+ * (состояния, эффекты с длительностью) и эффекты базовых действий HUD. Постоянные эффекты от предметов
+ * (броня, особенности) не показываем.
+ */
+function effectsRow(actor) {
+  const conc = actor.concentration?.effects ?? new Set();
+  const concentration = [...conc].map((e) => ({ uuid: e.uuid, name: concentrationName(e), rounds: effectRounds(e) }));
+  const seen = new Set([...conc].map((e) => e.uuid));
+  const list = [];
+  for (const e of actor.temporaryEffects ?? []) {
+    if (seen.has(e.uuid) || e.statuses?.has("concentrating")) continue;
+    seen.add(e.uuid);
+    const rounds = effectRounds(e);
+    const desc = plainText(e.description);
+    list.push({ uuid: e.uuid, name: e.name, img: e.img, rounds, tooltip: [e.name, rounds ? `${rounds} р.` : "", desc].filter(Boolean).join(" · ") });
+  }
+  for (const e of actor.effects) {
+    if (seen.has(e.uuid) || !e.getFlag(MODULE_ID, "basic") || e.disabled) continue;
+    list.push({ uuid: e.uuid, name: e.name, img: e.img, rounds: null, tooltip: e.name });
+  }
+  return {
+    show: concentration.length > 0 || list.length > 0,
+    concentration,
+    list,
+    // Снимать эффекты может владелец актёра (игрок — своего персонажа) и ГМ.
+    canRemove: actor.isOwner
+  };
+}
+
 /* ---------- Экономия действий ---------- */
 
 /** Ресурсы хода: действие, бонусное действие, реакция (ключи совпадают с группами панели). */
@@ -649,6 +709,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       openSheet: KhvorHud.#openSheet,
       setGroup: KhvorHud.#setGroup,
       toggleEconomy: KhvorHud.#toggleEconomy,
+      removeEffect: KhvorHud.#removeEffect,
       endTurn: KhvorHud.#endTurn,
       rollInitiative: KhvorHud.#rollInitiative,
       openSkills: KhvorHud.#openSkills,
@@ -757,6 +818,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       } : null,
       panel: abilities,
       inCombat: !!economy,
+      effects: effectsRow(actor),
       endTurn: endTurnState(actor),
       slots: spellSlots(actor)
     };
@@ -988,6 +1050,16 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     this.panel.tab = target.dataset.tab;
     this.panel.page = 0;
     this.render();
+  }
+
+  /** Крестик на эффекте: снять эффект; у концентрации — прервать её средствами dnd5e. */
+  static async #removeEffect(event, target) {
+    const actor = this.actor;
+    if (!actor?.isOwner) return;
+    const effect = await fromUuid(target.dataset.uuid);
+    if (!effect) return;
+    if (target.dataset.conc && typeof actor.endConcentration === "function") return actor.endConcentration(effect);
+    return effect.delete();
   }
 
   /** Клик по ромбу группы в бою: отметить действие потраченным или вернуть. */
