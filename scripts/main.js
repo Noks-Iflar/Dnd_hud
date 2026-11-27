@@ -1056,6 +1056,70 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 }
 
+/* ---------- Полоса инициативы ---------- */
+
+/**
+ * Полоса инициативы вверху экрана во время начатого боя: портреты участников по порядку хода,
+ * текущий ход крупнее с красным свечением, союзники синие, враги красные, полоска ПЗ
+ * (у врагов — только ГМу). Клик — камера на токен (свой токен ещё и выделяется).
+ */
+class KhvorInitiative extends HandlebarsApplicationMixin(ApplicationV2) {
+  static DEFAULT_OPTIONS = {
+    id: "khvor-initiative",
+    tag: "section",
+    classes: ["khvor-hud"],
+    window: { frame: false, positioned: false },
+    actions: { focusCombatant: KhvorInitiative.#focusCombatant }
+  };
+
+  static PARTS = {
+    bar: { template: `modules/${MODULE_ID}/templates/initiative.hbs` }
+  };
+
+  async _prepareContext() {
+    const combat = game.combat;
+    if (!combat?.started || !game.settings.get(MODULE_ID, "showInitiative")) return { show: false };
+    const F = CONST.TOKEN_DISPOSITIONS;
+    const list = [];
+    for (const c of combat.turns) {
+      if (c.hidden && !game.user.isGM) continue; // скрытых участников игроки не видят
+      const actor = c.actor;
+      const disposition = c.token?.disposition ?? F.NEUTRAL;
+      const side = disposition === F.FRIENDLY ? "is-ally" : disposition === F.HOSTILE ? "is-enemy" : "is-neutral";
+      const hp = actor?.system?.attributes?.hp;
+      const max = hp?.effectiveMax ?? hp?.max ?? 0;
+      list.push({
+        id: c.id,
+        name: c.name,
+        img: actor?.img || c.img,
+        initiative: Number.isFinite(c.initiative) ? c.initiative : null,
+        current: c.id === combat.combatant?.id,
+        defeated: c.isDefeated,
+        hidden: c.hidden,
+        side,
+        // ПЗ врагов и нейтралов видит только ГМ; своих и союзников — все.
+        showHp: game.user.isGM || disposition === F.FRIENDLY || actor?.isOwner,
+        hp: max > 0 ? Math.round(Math.clamp((hp.value ?? 0) / max, 0, 1) * 100) : 0
+      });
+    }
+    return { show: list.length > 0, round: combat.round, list };
+  }
+
+  _onRender(context, options) {
+    super._onRender?.(context, options);
+    // По центру свободной области: слева от боковой панели Foundry.
+    this.element.style.setProperty("--kh-area-right", `${freeAreaRight()}px`);
+  }
+
+  static #focusCombatant(event, target) {
+    const combatant = game.combat?.combatants.get(target.dataset.id);
+    const token = combatant?.token?.object;
+    if (!token) return;
+    canvas.animatePan({ x: token.center.x, y: token.center.y, duration: 250 });
+    if (token.isOwner) token.control({ releaseOthers: true });
+  }
+}
+
 /* ---------- Подключение к Foundry ---------- */
 
 Hooks.once("init", () => {
@@ -1077,6 +1141,16 @@ Hooks.once("init", () => {
     config: false,
     type: Boolean,
     default: false
+  });
+
+  game.settings.register(MODULE_ID, "showInitiative", {
+    name: "KHVOR.Settings.showInitiative.name",
+    hint: "KHVOR.Settings.showInitiative.hint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: () => game.modules.get(MODULE_ID).api?.initiative?.render({ force: true })
   });
 
   game.settings.register(MODULE_ID, "hidePlayers", {
@@ -1111,7 +1185,8 @@ Hooks.once("socketlib.ready", () => {
 
 Hooks.once("ready", () => {
   const hud = new KhvorHud();
-  game.modules.get(MODULE_ID).api = { hud };
+  const initiative = new KhvorInitiative();
+  game.modules.get(MODULE_ID).api = { hud, initiative };
   document.body.classList.toggle("khvor-hide-hotbar", game.settings.get(MODULE_ID, "hideHotbar"));
   document.body.classList.toggle("khvor-hide-players", game.settings.get(MODULE_ID, "hidePlayers"));
 
@@ -1123,6 +1198,17 @@ Hooks.once("ready", () => {
     "createActiveEffect", "updateActiveEffect", "deleteActiveEffect"
   ];
   for (const hook of hooks) Hooks.on(hook, refresh);
+
+  // Полоса инициативы перерисовывается на событиях боя, ПЗ и токенов.
+  const refreshInitiative = foundry.utils.debounce(() => initiative.render({ force: true }), 50);
+  const initiativeHooks = [
+    "canvasReady", "combatStart", "updateCombat", "deleteCombat", "createCombatant", "updateCombatant",
+    "deleteCombatant", "updateActor", "updateToken"
+  ];
+  for (const hook of initiativeHooks) Hooks.on(hook, refreshInitiative);
+  Hooks.on("collapseSidebar", () => setTimeout(refreshInitiative, 300));
+  window.addEventListener("resize", refreshInitiative);
+  refreshInitiative();
 
   // Режим броска: хуки dnd5e 6.x перед бросками d20 (preRollD20TestV2 — проверки, спасброски, навыки,
   // инструменты, смерть, концентрация; preRollAttackV2 — атаки).

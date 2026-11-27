@@ -1,0 +1,18 @@
+<div class="kh-init-root">
+{{#if show}}
+  <div class="kh-init-round">Раунд {{round}}</div>
+  <ol class="kh-init-list">
+    {{#each list}}
+    <li>
+      <button type="button" class="kh-init {{side}} {{#if current}}is-current{{/if}} {{#if defeated}}is-defeated{{/if}} {{#if hidden}}is-hidden{{/if}}" data-action="focusCombatant" data-id="{{id}}" data-tooltip="{{name}}{{#if initiative}} · инициатива {{initiative}}{{/if}}" aria-label="{{name}}{{#if current}} — сейчас ходит{{/if}}">
+        <span class="kh-init-portrait">
+          <img src="{{img}}" alt="">
+          <span class="kh-init-frame"></span>
+        </span>
+        <span class="kh-init-hp {{#unless showHp}}is-unknown{{/unless}}"><i style="width: {{hp}}%"></i></span>
+      </button>
+    </li>
+    {{/each}}
+  </ol>
+{{/if}}
+</div>

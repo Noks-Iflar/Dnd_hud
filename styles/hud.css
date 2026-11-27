@@ -16,7 +16,10 @@
 @font-face { font-family: "Alegreya Sans SC"; font-style: normal; font-weight: 700; font-display: swap; src: url("../fonts/alegreya-sans-sc-cyrillic-700-normal.woff2") format("woff2"); unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
 @font-face { font-family: "Alegreya Sans SC"; font-style: normal; font-weight: 700; font-display: swap; src: url("../fonts/alegreya-sans-sc-latin-700-normal.woff2") format("woff2"); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 
-#khvor-hud {
+/* Общие переменные для всех окон модуля (HUD, полоса инициативы, окно навыков) */
+#khvor-hud,
+#khvor-initiative,
+#khvor-skills {
   --kh-text: #e6e2ea;
   --kh-muted: #a9a4b4;
   --kh-iron: #4a4852;
@@ -25,7 +28,11 @@
   --kh-violet: #b48cff;
   --kh-serif: "Cormorant Garamond", "Amiri", serif;
   --kh-sans: "Alegreya Sans", "Signika", sans-serif;
+  font-family: var(--kh-sans);
+  color: var(--kh-text);
+}
 
+#khvor-hud {
   position: fixed;
   /* Прижат к левому краю; список игроков Foundry на это время прячется (настройка hidePlayers).
      Справа HUD не заходит на боковую панель: число плиток считает main.js (pageColumns). */
@@ -43,13 +50,13 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 
 /* Сброс стилей кнопок Foundry внутри HUD.
    :where() обнуляет вес селектора, чтобы классы ниже (.kh-...) могли его перебить. */
-:where(#khvor-hud) button {
+:where(#khvor-hud, #khvor-initiative, #khvor-skills) button {
   all: unset;
   box-sizing: border-box;
   cursor: pointer;
 }
-:where(#khvor-hud) button:focus-visible { outline: 2px solid var(--kh-arcane); outline-offset: 2px; }
-:where(#khvor-hud) img { border: 0; }
+:where(#khvor-hud, #khvor-initiative, #khvor-skills) button:focus-visible { outline: 2px solid var(--kh-arcane); outline-offset: 2px; }
+:where(#khvor-hud, #khvor-initiative, #khvor-skills) img { border: 0; }
 
 .kh-left {
   display: flex;
@@ -701,3 +708,104 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   box-shadow: 0 0 0 2px #ffa64d, 0 0 8px rgba(255, 166, 77, 0.7);
   filter: brightness(1.2);
 }
+
+/* ---------- Полоса инициативы (вверху, по центру свободной области) ---------- */
+#khvor-initiative {
+  position: fixed;
+  top: 8px;
+  left: calc(var(--kh-area-right, 100vw) / 2);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(var(--kh-area-right, 100vw) - 40px);
+  z-index: 60;
+  pointer-events: none;
+}
+.kh-init-root { display: flex; align-items: flex-start; gap: 10px; }
+.kh-init-round {
+  align-self: center;
+  padding: 6px 12px;
+  border: 1px solid var(--kh-iron);
+  border-radius: 4px;
+  background: linear-gradient(#18171c, #0c0b0e);
+  box-shadow: 0 0 0 1px #000, 0 4px 10px rgba(0, 0, 0, 0.6);
+  font-family: var(--kh-serif);
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+.kh-init-list { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.kh-init {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  pointer-events: auto;
+  transition: transform 0.15s, filter 0.15s;
+}
+.kh-init:hover { transform: translateY(2px); filter: brightness(1.15); }
+.kh-init-portrait {
+  position: relative;
+  display: block;
+  width: 48px;
+  height: 64px; /* пропорция рамки 239:320 */
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.7));
+}
+/* Окно рамки initiative-frame: x 16–222, y 46–274 из 239×320 */
+.kh-init-portrait img {
+  position: absolute;
+  left: 6.7%;
+  top: 14.4%;
+  width: 86.2%;
+  height: 71.3%;
+  object-fit: cover;
+  object-position: top center;
+  background: #0c0b0e;
+}
+.kh-init-frame {
+  position: absolute;
+  inset: 0;
+  background: url("../assets/initiative-frame.png") center / 100% 100% no-repeat;
+}
+/* Сторона: подложка под рамкой цвета стороны — проступает в прорези внизу рамки и по краям окна */
+.kh-init-portrait::before {
+  content: "";
+  position: absolute;
+  inset: 5% 4%;
+  background: var(--kh-iron);
+}
+.kh-init.is-ally .kh-init-portrait::before { background: #3f6fb0; }
+.kh-init.is-enemy .kh-init-portrait::before { background: #8e1420; }
+.kh-init-hp {
+  display: block;
+  width: 42px;
+  height: 4px;
+  border-radius: 1px;
+  background: #1d1c22;
+  box-shadow: 0 0 0 1px #000;
+  overflow: hidden;
+}
+.kh-init-hp i { display: block; height: 100%; background: linear-gradient(#ff5a66, #b01a2a); }
+.kh-init-hp.is-unknown i { display: none; }
+/* Текущий ход: крупнее, красное свечение и ромб сверху */
+.kh-init.is-current .kh-init-portrait {
+  width: 60px;
+  height: 80px;
+  filter: drop-shadow(0 0 8px rgba(216, 50, 63, 0.85)) drop-shadow(0 4px 8px rgba(0, 0, 0, 0.7));
+}
+.kh-init.is-current .kh-init-hp { width: 54px; }
+.kh-init.is-current::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--kh-blood);
+  box-shadow: 0 0 0 1px #000, 0 0 6px var(--kh-blood);
+}
+.kh-init.is-defeated { opacity: 0.4; filter: grayscale(1); }
+.kh-init.is-hidden { opacity: 0.55; }
