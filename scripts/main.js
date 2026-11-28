@@ -71,6 +71,7 @@ const BASIC_ACTIONS = [
 /** Вкладки-фильтры над панелью. «Все» есть всегда, остальные — только если в них что-то есть. */
 const TABS = [
   { id: "all", label: "Все" },
+  { id: "favorites", label: "★ Избранное" },
   { id: "attacks", label: "Атаки" },
   { id: "spells", label: "Заклинания" },
   { id: "features", label: "Умения" },
@@ -116,9 +117,10 @@ function tileCategory(item, activity) {
  * Возвращает группы страницы, вкладки и номер страницы.
  */
 function paginate(groups, { tab, group = null, page, rows, columns = COLUMNS_MAX }) {
-  const tabs = TABS.filter((t) => t.id === "all" || groups.some((g) => g.tiles.some((x) => x.category === t.id)));
+  const inTabOf = (id) => (x) => id === "all" || (id === "favorites" ? x.favorite : x.category === id);
+  const tabs = TABS.filter((t) => t.id === "all" || groups.some((g) => g.tiles.some(inTabOf(t.id))));
   if (!tabs.some((t) => t.id === tab)) tab = "all";
-  const inTab = (x) => tab === "all" || x.category === tab;
+  const inTab = inTabOf(tab);
 
   // Группы, в которых на этой вкладке есть плитки. Фильтр по группе (клик по подписи «Бонусное»)
   // сбрасывается, если такой группы на вкладке нет.
@@ -147,6 +149,12 @@ function paginate(groups, { tab, group = null, page, rows, columns = COLUMNS_MAX
       if (group) return g.key === group ? (shown.get(g.key) ?? { ...g, tiles: [] }) : { ...g, tiles: [], stub: true };
       return shown.get(g.key) ?? { ...g, tiles: [], stub: true, elsewhere: true };
     });
+  // Горячие клавиши 1–0 — первые 10 плиток страницы в порядке показа (цифра в углу плитки).
+  const HOTKEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+  let n = 0;
+  for (const g of pageGroups) {
+    g.tiles = g.tiles.map((x) => ({ ...x, hotkey: HOTKEYS[n++] ?? null }));
+  }
   for (const g of pageGroups) {
     g.active = g.key === group;
     // В режиме двух строк у группы половина столбцов: плитки идут слева направо, потом вторая строка.
@@ -335,6 +343,9 @@ function tileState(actor, item, activity, groupKey) {
  */
 function collectAbilities(actor) {
   const items = [...actor.items].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+  // Избранное из листа dnd5e: system.favorites = [{ type: "item", id: ".Item.<id>" }, { type: "activity",
+  // id: ".Item.<id>.Activity.<id>" }, …] (звёздочка в листе). Другие виды (навыки, ячейки) панели не касаются.
+  const favorites = new Set((actor.system.favorites ?? []).map((f) => f.id));
 
   // Заклинания, которые активность «cast» создаёт сама. В флаге cachedFor — путь к этой активности,
   // например ".Item.mmSpellcasting00.Activity.NYI0XAuSZOULfXoN". Такие копии отдельно не показываем,
@@ -378,6 +389,7 @@ function collectAbilities(actor) {
       groups[groupKey].push({
         itemId: item.id, activityId: activity.id, name, label, img,
         category: tileCategory(item, activity),
+        favorite: favorites.has(`.Item.${item.id}`) || favorites.has(`.Item.${item.id}.Activity.${activity.id}`),
         ...tileState(actor, item, activity, groupKey)
       });
     }
@@ -908,6 +920,8 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       } : null,
       panel: abilities,
       inCombat: !!economy,
+      // Вне боя HUD свёрнут до портрета и сферы, раскрывается при наведении (настройка collapseOutOfCombat).
+      collapsed: !economy && game.settings.get(MODULE_ID, "collapseOutOfCombat"),
       effects: effectsRow(actor),
       legact: resourceGems(sys.resources?.legact),
       legres: resourceGems(sys.resources?.legres),
@@ -993,6 +1007,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   #fitColumns(context) {
     const panel = context.panel;
     if (!panel?.columns) return;
+    // Свёрнутые панели невидимы, но место занимают — мерить можно и так.
     const slack = freeAreaRight() - 16 - this.element.getBoundingClientRect().right;
     let target = panel.columns;
     if (slack < 0) target -= Math.ceil(-slack / TILE_WIDTH);
@@ -1116,13 +1131,29 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
    * подхватывает использование сам.
    */
   static async #useAbility(event, target) {
+    return this.useAbility(target.dataset.itemId, target.dataset.activityId, event);
+  }
+
+  /**
+   * Горячая клавиша 1–0: использовать плитку с этой цифрой на текущей странице.
+   * Возвращает true, если клавиша обработана (тогда макрос с той же клавиши не запускается).
+   */
+  useHotkey(key, event) {
+    if (!this.actor || !this.rendered) return false;
+    const tile = this.element.querySelector(`.kh-tile[data-hotkey="${key}"]`);
+    if (!tile) return false;
+    this.useAbility(tile.dataset.itemId, tile.dataset.activityId, event);
+    return true;
+  }
+
+  /** Использовать активность предмета актёра HUD (клик по плитке или горячая клавиша). */
+  async useAbility(itemId, activityId, event) {
     const actor = this.actor;
     if (!actor) return;
     if (!actor.isOwner) {
       ui.notifications.warn("Это не ваш персонаж.");
       return;
     }
-    const { itemId, activityId } = target.dataset;
     const item = actor.items.get(itemId);
     const activity = item?.system.activities?.get(activityId);
     if (!activity) {
@@ -1524,6 +1555,39 @@ Hooks.once("init", () => {
     onChange: () => game.modules.get(MODULE_ID).api?.initiative?.render({ force: true })
   });
 
+  game.settings.register(MODULE_ID, "collapseOutOfCombat", {
+    name: "KHVOR.Settings.collapseOutOfCombat.name",
+    hint: "KHVOR.Settings.collapseOutOfCombat.hint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: () => game.modules.get(MODULE_ID).api?.hud?.render()
+  });
+
+  game.settings.register(MODULE_ID, "hideChatInput", {
+    name: "KHVOR.Settings.hideChatInput.name",
+    hint: "KHVOR.Settings.hideChatInput.hint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: (value) => document.body.classList.toggle("khvor-hide-chat-input", value)
+  });
+
+  // Горячие клавиши 1–0: плитки текущей страницы HUD. Приоритет выше обычного, поэтому, пока HUD открыт
+  // и плитка с этой цифрой есть, макрос с той же клавиши не запускается; иначе клавиша уходит Foundry.
+  const KEYS = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8", "Digit9", "Digit0"];
+  KEYS.forEach((code, i) => {
+    const key = code.slice(-1);
+    game.keybindings.register(MODULE_ID, `tile${key}`, {
+      name: `HUD Хвора: плитка ${key}`,
+      editable: [{ key: code }],
+      precedence: CONST.KEYBINDING_PRECEDENCE.PRIORITY,
+      onDown: (context) => game.modules.get(MODULE_ID).api?.hud?.useHotkey(key, context?.event) ?? false
+    });
+  });
+
   game.settings.register(MODULE_ID, "hidePlayers", {
     name: "KHVOR.Settings.hidePlayers.name",
     hint: "KHVOR.Settings.hidePlayers.hint",
@@ -1561,6 +1625,7 @@ Hooks.once("ready", () => {
   game.modules.get(MODULE_ID).api = { hud, initiative, skills };
   document.body.classList.toggle("khvor-hide-hotbar", game.settings.get(MODULE_ID, "hideHotbar"));
   document.body.classList.toggle("khvor-hide-players", game.settings.get(MODULE_ID, "hidePlayers"));
+  document.body.classList.toggle("khvor-hide-chat-input", game.settings.get(MODULE_ID, "hideChatInput"));
 
   // Перерисовка не чаще раза в 50 мс, даже если событий много подряд.
   const refresh = foundry.utils.debounce(async () => {

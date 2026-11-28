@@ -12,6 +12,14 @@
       "showInitiative": {
         "name": "Initiative bar",
         "hint": "Show the HUD initiative bar at the top of the screen during combat."
+      },
+      "collapseOutOfCombat": {
+        "name": "Collapse the HUD out of combat",
+        "hint": "Out of combat only the portrait and the health orb are shown; the rest expands on mouse hover. In combat the HUD is always expanded."
+      },
+      "hideChatInput": {
+        "name": "Hide the floating chat input",
+        "hint": "While the HUD is open, the chat input, dice tray and roll mode buttons shown over the scene (when another sidebar tab is active) are hidden. The Chat tab keeps its input."
       }
     },
     "Status": {

@@ -576,6 +576,7 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  white-space: nowrap;
   color: var(--kh-muted);
 }
 .kh-tab:hover { color: var(--kh-text); background: #1b1a20; }
@@ -1062,3 +1063,33 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 /* Выключенный эффект (правый клик по иконке) */
 .kh-effect.is-disabled img { filter: grayscale(1) brightness(0.5); }
 .kh-effect.is-disabled { border-style: dashed; }
+
+/* Цифра горячей клавиши (1–0) в левом нижнем углу плитки */
+.kh-hotkey {
+  position: absolute;
+  left: 2px;
+  bottom: 1px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: #d8d3e0;
+  text-shadow: 0 0 2px #000, 0 0 3px #000, 0 1px 2px #000;
+  pointer-events: none;
+}
+
+/* Вне боя HUD свёрнут: видны портрет и сфера, панели невидимы (но место занимают — ширина не скачет).
+   Наведение на портрет или сферу раскрывает всё; ряд эффектов виден и в свёрнутом виде. */
+.kh-root.is-collapsed:not(:hover) .kh-panel,
+.kh-root.is-collapsed:not(:hover) .kh-center,
+.kh-root.is-collapsed:not(:hover) .kh-right {
+  visibility: hidden;
+  pointer-events: none;
+}
+.kh-root.is-collapsed:not(:hover) .kh-effects { visibility: visible; pointer-events: auto; }
+
+/* Поле ввода чата над сценой (когда открыта не вкладка «Чат») прячется, пока открыт HUD */
+body.khvor-hud-active.khvor-hide-chat-input #chat-notifications > #chat-message,
+body.khvor-hud-active.khvor-hide-chat-input #chat-notifications > .dice-tray,
+body.khvor-hud-active.khvor-hide-chat-input #chat-notifications > #chat-controls {
+  display: none !important;
+}

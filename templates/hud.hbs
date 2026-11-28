@@ -1,4 +1,4 @@
-<div class="kh-root" lang="ru">
+<div class="kh-root {{#if collapsed}}is-collapsed{{/if}}" lang="ru">
 {{#if actor}}
   <div class="kh-left">
 
@@ -167,13 +167,14 @@
         <div class="kh-group-body">
           <div class="kh-tiles" style="--cols: {{cols}}">
             {{#each tiles}}
-            <button type="button" class="kh-tile {{#if spent}}is-spent{{/if}}" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" aria-label="{{name}}{{#if badge}} ({{badge}}){{/if}}. Правый клик — открыть лист предмета">
+            <button type="button" class="kh-tile {{#if spent}}is-spent{{/if}}" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" {{#if hotkey}}data-hotkey="{{hotkey}}" aria-keyshortcuts="{{hotkey}}"{{/if}} aria-label="{{name}}{{#if badge}} ({{badge}}){{/if}}. Правый клик — открыть лист предмета">
               <span class="kh-tile-slot">
                 <img class="kh-tile-img" src="{{img}}" alt="">
                 {{#if circle}}<span class="kh-circle {{#if pact}}is-pact{{/if}}">{{circle}}</span>{{/if}}
                 {{#if badge}}<span class="kh-badge {{#if recharge}}is-recharge{{/if}} {{#if level}}is-level{{/if}} {{#if pact}}is-pact{{/if}}">{{badge}}</span>{{/if}}
                 {{#if quantity}}<span class="kh-badge">{{quantity}}</span>{{/if}}
                 {{#if cost}}<span class="kh-cost">{{#each cost}}<i></i>{{/each}}</span>{{/if}}
+                {{#if hotkey}}<span class="kh-hotkey">{{hotkey}}</span>{{/if}}
               </span>
               <span class="kh-tile-name">{{label}}</span>
             </button>
