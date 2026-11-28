@@ -820,7 +820,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   actor = null;
 
   /** Выбранная вкладка и страница панели способностей; сбрасываются при смене актёра. */
-  panel = { actorId: null, tab: "all", group: null, page: 0 };
+  panel = { actorId: null, tab: "favorites", group: null, page: 0 };
 
   /** Собирает данные для шаблона. */
   async _prepareContext() {
@@ -832,7 +832,8 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     const sys = actor.system;
     const attr = sys.attributes ?? {};
 
-    if (this.panel.actorId !== actor.id) this.panel = { actorId: actor.id, tab: "all", group: null, page: 0 };
+    // Новый актёр — открываем «Избранное»; если его нет, paginate() сам переключит на «Все».
+    if (this.panel.actorId !== actor.id) this.panel = { actorId: actor.id, tab: "favorites", group: null, page: 0 };
     const abilities = paginate(collectAbilities(actor), {
       tab: this.panel.tab,
       group: this.panel.group,
