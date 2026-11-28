@@ -936,12 +936,13 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#fitColumns(context);
   }
 
-  /** Левая панель и правый блок — той же высоты, что средняя панель: ровный верхний край HUD. */
+  /** Левая панель, средняя и правый блок — одной высоты (по самой высокой): ровный верхний край HUD. */
   #alignHeights() {
-    const center = this.element.querySelector(".kh-center");
-    if (!center) return;
-    const h = center.offsetHeight;
-    for (const el of this.element.querySelectorAll(".kh-panel, .kh-right")) el.style.minHeight = `${h}px`;
+    const panels = [...this.element.querySelectorAll(".kh-panel, .kh-center, .kh-right")];
+    if (!panels.length) return;
+    for (const el of panels) el.style.minHeight = "";
+    const h = Math.max(...panels.map((el) => el.offsetHeight));
+    for (const el of panels) el.style.minHeight = `${h}px`;
   }
 
   /**

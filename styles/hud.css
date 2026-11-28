@@ -292,17 +292,20 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   position: relative; /* для ряда эффектов над панелью */
   display: flex;
   align-items: center;
+  justify-content: space-between; /* ширина постоянная: щит, цифры и столбец кнопок расходятся по ней */
   gap: 9px;
+  width: 261px;
   padding: 0 2px 0 26px; /* слева место под край сферы */
   border-style: solid;
   border-width: 16px;
   border-image: url("../assets/panel-frame.png") 64 fill / 16px / 0 stretch;
 }
-.kh-panel-btns { display: grid; grid-template-columns: repeat(2, 28px); gap: 3px; }
+/* Кнопки инициативы, навыков и отдыха — одним столбцом справа */
+.kh-panel-btns { display: flex; flex-direction: column; gap: 4px; }
 .kh-icon-btn {
   display: block;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 4px;
   transition: filter 0.15s, transform 0.15s;
 }
@@ -381,6 +384,7 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   gap: 12px;
 }
 .kh-center {
+  box-sizing: border-box; /* min-height ставит main.js по самой высокой из трёх панелей */
   position: relative;
   min-width: 420px; /* чтобы вкладки всегда помещались в одну строку */
   pointer-events: auto;
