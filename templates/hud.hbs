@@ -1,4 +1,4 @@
-<div class="kh-root" lang="ru">
+<div class="kh-root {{#if collapsed}}is-collapsed{{/if}}" lang="ru">
 {{#if actor}}
   <div class="kh-left">
 
@@ -23,7 +23,7 @@
         <div class="kh-orb-empty"></div>
         <div class="kh-orb-blood" style="clip-path: inset({{hp.missing}}% 0 0 0)"></div>
         {{#if death}}
-        <button type="button" class="kh-death" data-action="rollDeathSave" data-tooltip="Спасбросок от смерти" aria-label="Спасбросок от смерти: успехов {{death.successes}}, провалов {{death.failures}}">
+        <button type="button" class="kh-death" data-action="rollDeathSave" data-tooltip="Спасбросок от смерти (правый клик — сбросить)" aria-label="Спасбросок от смерти: успехов {{death.successes}}, провалов {{death.failures}}">
           <span class="kh-death-row is-success">{{#each death.success}}<i class="{{#if this}}on{{/if}}"></i>{{/each}}</span>
           <span class="kh-death-label">Смерть</span>
           <span class="kh-death-row is-failure">{{#each death.failure}}<i class="{{#if this}}on{{/if}}"></i>{{/each}}</span>
@@ -55,7 +55,7 @@
         </div>
         {{/each}}
         {{#each effects.list}}
-        <div class="kh-effect" data-tooltip="{{tooltip}}">
+        <div class="kh-effect {{#if disabled}}is-disabled{{/if}}" data-uuid="{{uuid}}" data-tooltip="{{tooltip}}{{#if @root.effects.canRemove}} (правый клик — {{#if disabled}}включить{{else}}выключить{{/if}}){{/if}}">
           <img src="{{img}}" alt="">
           {{#if rounds}}<span class="kh-effect-rounds">{{rounds}}</span>{{/if}}
           {{#if @root.effects.canRemove}}
@@ -74,14 +74,28 @@
           <span class="kh-move-value">{{#if move.tracked}}{{move.left}}<small>/{{move.total}}</small>{{else}}{{move.total}}{{/if}} <small>{{units}}</small></span>
           <span class="kh-move-bar">{{#each move.segments}}<i class="{{#if this}}on{{/if}}"></i>{{/each}}</span>
         </div>
-        <div class="kh-stat" data-tooltip="{{extra.label}}">
-          <span class="kh-stat-value">{{extra.value}}</span>
-          <span class="kh-stat-label">{{extra.short}}</span>
+        {{#if spellDC}}
+        <div class="kh-stat" data-tooltip="СЛ заклинаний {{spellDC}}{{#if spellAttack}} · бонус атаки заклинанием {{spellAttack}}{{/if}}{{#if spellAbility}} ({{spellAbility}}){{/if}}">
+          <span class="kh-stat-value">{{spellDC}}</span>
+          <span class="kh-stat-label">СЛ</span>
+          {{#if spellAttack}}
+          <span class="kh-stat-value kh-stat-second">{{spellAttack}}</span>
+          <span class="kh-stat-label">атака</span>
+          {{/if}}
+        </div>
+        {{/if}}
+        <div class="kh-stat" data-tooltip="Пассивная внимательность">
+          <span class="kh-stat-value">{{passive}}</span>
+          <span class="kh-stat-label">пасс. вним.</span>
         </div>
         <div class="kh-stat" data-tooltip="Инициатива">
           <span class="kh-stat-value">{{init}}</span>
           <span class="kh-stat-label">иниц.</span>
         </div>
+        {{#if senses}}
+        {{!-- Чувства: в панели только тёмное зрение, Shift + клик — подсказка со всеми чувствами --}}
+        <button type="button" class="kh-senses" data-action="showSenses" data-all="{{senses.all}}" data-tooltip="{{senses.hint}}" aria-label="Чувства: {{senses.all}}">{{#if senses.text}}{{senses.text}} <small>{{senses.units}}</small>{{else}}чувства{{/if}}</button>
+        {{/if}}
         {{#if legres}}
         {{!-- Легендарное сопротивление NPC: горит — есть; клик по горящему — использовать, по пустому — вернуть --}}
         <div class="kh-legres" data-tooltip="Легендарное сопротивление: {{legres.value}} из {{legres.max}}">
@@ -102,8 +116,9 @@
           <img src="{{assets}}/icon-skills.png" alt="">
         </button>
         {{#if canRest}}
-        <button type="button" class="kh-icon-btn" data-action="shortRest" data-tooltip="Короткий отдых" aria-label="Короткий отдых">
+        <button type="button" class="kh-icon-btn" data-action="shortRest" data-tooltip="Короткий отдых{{#if hd}} · кости хитов {{hd.value}} из {{hd.max}} ({{hd.kinds}}){{/if}}" aria-label="Короткий отдых{{#if hd}}, кости хитов {{hd.value}} из {{hd.max}}{{/if}}">
           <img src="{{assets}}/icon-short-rest.png" alt="">
+          {{#if hd}}<span class="kh-hd">{{hd.value}}/{{hd.max}}</span>{{/if}}
         </button>
         <button type="button" class="kh-icon-btn" data-action="longRest" data-tooltip="Долгий отдых" aria-label="Долгий отдых">
           <img src="{{assets}}/icon-long-rest.png" alt="">
@@ -166,12 +181,14 @@
         <div class="kh-group-body">
           <div class="kh-tiles" style="--cols: {{cols}}">
             {{#each tiles}}
-            <button type="button" class="kh-tile {{#if spent}}is-spent{{/if}}" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" aria-label="{{name}}{{#if badge}} ({{badge}}){{/if}}">
+            <button type="button" class="kh-tile {{#if spent}}is-spent{{/if}}" data-action="useAbility" data-item-id="{{itemId}}" data-activity-id="{{activityId}}" {{#if hotkey}}data-hotkey="{{hotkey}}" aria-keyshortcuts="{{hotkey}}"{{/if}} aria-label="{{name}}{{#if badge}} ({{badge}}){{/if}}. Правый клик — открыть лист предмета">
               <span class="kh-tile-slot">
                 <img class="kh-tile-img" src="{{img}}" alt="">
-                {{#if badge}}<span class="kh-badge {{#if recharge}}is-recharge{{/if}} {{#if level}}is-level{{/if}} {{#if pact}}is-pact{{/if}}">{{badge}}</span>{{/if}}
+                {{#if circle}}<span class="kh-circle {{#if pact}}is-pact{{/if}}">{{circle}}</span>{{/if}}
+                {{#if badge}}<span class="kh-badge {{#if recharge}}is-recharge{{/if}}">{{badge}}</span>{{/if}}
                 {{#if quantity}}<span class="kh-badge">{{quantity}}</span>{{/if}}
                 {{#if cost}}<span class="kh-cost">{{#each cost}}<i></i>{{/each}}</span>{{/if}}
+                {{#if hotkey}}<span class="kh-hotkey">{{hotkey}}</span>{{/if}}
               </span>
               <span class="kh-tile-name">{{label}}</span>
             </button>
@@ -191,7 +208,7 @@
           <img class="kh-gem-static" src="{{@root.assets}}/{{gem}}.png" alt="">
           {{/if}}
           {{/if}}
-          <button type="button" class="kh-group-filter" data-action="setGroup" data-group="{{key}}" aria-pressed="{{active}}" data-tooltip="{{#if active}}Показать все группы{{else}}Только «{{label}}»{{/if}}">{{label}}</button>
+          <button type="button" class="kh-group-filter" data-action="setGroup" data-group="{{key}}" aria-pressed="{{active}}" data-tooltip="{{#if active}}Показать все группы{{else if elsewhere}}«{{label}}» на другой странице — показать{{else}}Только «{{label}}»{{/if}}">{{label}}</button>
         </div>
       </div>
       {{else}}
@@ -208,12 +225,11 @@
       {{/each}}
     </div>
     {{#if visibility}}
-    {{!-- Только ГМу: броски всем или скрыто (режим бросков Foundry) --}}
-    <div class="kh-seg kh-seg-visibility" role="group" aria-label="Кто видит броски">
-      {{#each visibility}}
-      <button type="button" class="kh-seg-btn {{#if active}}active{{/if}}" data-action="setVisibility" data-mode="{{mode}}" data-tooltip="{{hint}}" aria-pressed="{{active}}">{{label}}</button>
-      {{/each}}
-    </div>
+    {{!-- Только ГМу: кто видит броски — все или только ГМ (режим бросков Foundry) --}}
+    <button type="button" class="kh-visibility {{#unless visibility.open}}is-hidden-rolls{{/unless}}" data-action="setVisibility" data-next="{{visibility.next}}" data-tooltip="{{visibility.hint}}" aria-label="{{visibility.hint}}">
+      <i class="fa-solid {{#if visibility.open}}fa-eye{{else}}fa-eye-slash{{/if}}"></i>
+      <span>{{visibility.label}}</span>
+    </button>
     {{/if}}
     <div class="kh-basic" role="group" aria-label="Базовые действия">
       {{#each basic}}

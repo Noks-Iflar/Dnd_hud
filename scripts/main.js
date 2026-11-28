@@ -71,6 +71,7 @@ const BASIC_ACTIONS = [
 /** Вкладки-фильтры над панелью. «Все» есть всегда, остальные — только если в них что-то есть. */
 const TABS = [
   { id: "all", label: "Все" },
+  { id: "favorites", label: "★ Избранное" },
   { id: "attacks", label: "Атаки" },
   { id: "spells", label: "Заклинания" },
   { id: "features", label: "Умения" },
@@ -116,9 +117,10 @@ function tileCategory(item, activity) {
  * Возвращает группы страницы, вкладки и номер страницы.
  */
 function paginate(groups, { tab, group = null, page, rows, columns = COLUMNS_MAX }) {
-  const tabs = TABS.filter((t) => t.id === "all" || groups.some((g) => g.tiles.some((x) => x.category === t.id)));
+  const inTabOf = (id) => (x) => id === "all" || (id === "favorites" ? x.favorite : x.category === id);
+  const tabs = TABS.filter((t) => t.id === "all" || groups.some((g) => g.tiles.some(inTabOf(t.id))));
   if (!tabs.some((t) => t.id === tab)) tab = "all";
-  const inTab = (x) => tab === "all" || x.category === tab;
+  const inTab = inTabOf(tab);
 
   // Группы, в которых на этой вкладке есть плитки. Фильтр по группе (клик по подписи «Бонусное»)
   // сбрасывается, если такой группы на вкладке нет.
@@ -140,9 +142,19 @@ function paginate(groups, { tab, group = null, page, rows, columns = COLUMNS_MAX
   }
   // При фильтре по группе остальные группы остаются короткими «заглушками» — одной подписью,
   // чтобы на них можно было переключиться.
-  const pageGroups = group
-    ? present.map((g) => (g.key === group ? (shown.get(g.key) ?? { ...g, tiles: [] }) : { ...g, tiles: [], stub: true }))
-    : [...shown.values()];
+  // Без фильтра группы, которые не попали на эту страницу (например, «Бонусное» на 3-й), тоже остаются
+  // заглушками: клик по подписи включает фильтр по ней — и её плитки сразу видны.
+  const pageGroups = present
+    .map((g) => {
+      if (group) return g.key === group ? (shown.get(g.key) ?? { ...g, tiles: [] }) : { ...g, tiles: [], stub: true };
+      return shown.get(g.key) ?? { ...g, tiles: [], stub: true, elsewhere: true };
+    });
+  // Горячие клавиши 1–0 — первые 10 плиток страницы в порядке показа (цифра в углу плитки).
+  const HOTKEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+  let n = 0;
+  for (const g of pageGroups) {
+    g.tiles = g.tiles.map((x) => ({ ...x, hotkey: HOTKEYS[n++] ?? null }));
+  }
   for (const g of pageGroups) {
     g.active = g.key === group;
     // В режиме двух строк у группы половина столбцов: плитки идут слева направо, потом вторая строка.
@@ -221,17 +233,21 @@ function displayName(item, activity) {
 }
 
 /**
- * Есть ли у актёра ячейка, чтобы сотворить заклинание круга level.
- * Обычные заклинания можно творить и ячейкой договора, заклинания договора — только ею.
- * Остаток ячеек — spells.spellN.value / spells.pact.value (так же их читает макрос снимка Dnd Hub).
+ * Сколько ячеек для заклинания круга level: same — ячейки этого круга, higher — круги выше.
+ * Ячейка договора считается по своему кругу; заклинания договора творятся только ею.
  */
-function hasSlot(actor, level, method) {
+function slotCounts(actor, level, method) {
   const spells = actor.system.spells ?? {};
   const pact = spells.pact;
-  const pactOk = (pact?.value ?? 0) > 0 && (pact?.level ?? 0) >= level;
-  if (method === "pact") return pactOk;
-  for (let l = level; l <= 9; l++) if ((spells[`spell${l}`]?.value ?? 0) > 0) return true;
-  return pactOk;
+  const pactValue = Number(pact?.value) || 0;
+  const pactLevel = Number(pact?.level) || 0;
+  if (method === "pact") return { same: pactLevel >= level ? pactValue : 0, higher: 0 };
+  let same = Number(spells[`spell${level}`]?.value) || 0;
+  let higher = 0;
+  for (let l = level + 1; l <= 9; l++) higher += Number(spells[`spell${l}`]?.value) || 0;
+  if (pactLevel === level) same += pactValue;
+  else if (pactLevel > level) higher += pactValue;
+  return { same, higher };
 }
 
 /**
@@ -282,13 +298,15 @@ function tileState(actor, item, activity, groupKey) {
   }
   if (uses && uses.value === 0) state.spent = true;
 
-  // Заклинание за ячейку: значок круга «III», плитка бледнеет, если подходящих ячеек не осталось.
+  // Заклинание за ячейку: круг «III» в левом углу (у договора фиолетовый). Плитка бледнеет,
+  // если ячеек этого круга и выше не осталось. Число ячеек на плитке не пишем — Нокс решил, что оно
+  // непонятно с первого взгляда; остаток видно по ромбам ячеек над панелью.
   const level = item.type === "spell" ? item.system.level ?? 0 : 0;
   if (level > 0 && activity.type !== "forward" && !consumesItem && !uses) {
-    state.badge = ROMAN[level];
-    state.level = true;
+    state.circle = ROMAN[level];
     state.pact = item.system.method === "pact";
-    if (!hasSlot(actor, level, item.system.method)) state.spent = true;
+    const { same, higher } = slotCounts(actor, level, item.system.method);
+    if (same + higher === 0) state.spent = true;
   }
 
   if (item.type === "consumable" && (item.system.quantity ?? 1) > 1) state.quantity = `×${item.system.quantity}`;
@@ -310,6 +328,9 @@ function tileState(actor, item, activity, groupKey) {
  */
 function collectAbilities(actor) {
   const items = [...actor.items].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+  // Избранное из листа dnd5e: system.favorites = [{ type: "item", id: ".Item.<id>" }, { type: "activity",
+  // id: ".Item.<id>.Activity.<id>" }, …] (звёздочка в листе). Другие виды (навыки, ячейки) панели не касаются.
+  const favorites = new Set((actor.system.favorites ?? []).map((f) => f.id));
 
   // Заклинания, которые активность «cast» создаёт сама. В флаге cachedFor — путь к этой активности,
   // например ".Item.mmSpellcasting00.Activity.NYI0XAuSZOULfXoN". Такие копии отдельно не показываем,
@@ -353,6 +374,7 @@ function collectAbilities(actor) {
       groups[groupKey].push({
         itemId: item.id, activityId: activity.id, name, label, img,
         category: tileCategory(item, activity),
+        favorite: favorites.has(`.Item.${item.id}`) || favorites.has(`.Item.${item.id}.Activity.${activity.id}`),
         ...tileState(actor, item, activity, groupKey)
       });
     }
@@ -468,12 +490,17 @@ function effectsRow(actor) {
   const concentration = [...conc].map((e) => ({ uuid: e.uuid, name: concentrationName(e), rounds: effectRounds(e) }));
   const seen = new Set([...conc].map((e) => e.uuid));
   const list = [];
-  for (const e of actor.temporaryEffects ?? []) {
-    if (seen.has(e.uuid) || e.statuses?.has("concentrating")) continue;
+  // Временные эффекты, включая выключенные (правый клик по иконке выключает и включает их обратно).
+  const all = typeof actor.allApplicableEffects === "function" ? [...actor.allApplicableEffects()] : [...(actor.temporaryEffects ?? [])];
+  for (const e of all) {
+    if (!e.isTemporary || seen.has(e.uuid) || e.statuses?.has("concentrating")) continue;
     seen.add(e.uuid);
     const rounds = effectRounds(e);
     const desc = plainText(e.description);
-    list.push({ uuid: e.uuid, name: e.name, img: e.img, rounds, tooltip: [e.name, rounds ? `${rounds} р.` : "", desc].filter(Boolean).join(" · ") });
+    list.push({
+      uuid: e.uuid, name: e.name, img: e.img, rounds, disabled: e.disabled,
+      tooltip: [e.name, e.disabled ? "выключен" : "", rounds ? `${rounds} р.` : "", desc].filter(Boolean).join(" · ")
+    });
   }
   for (const e of actor.effects) {
     if (seen.has(e.uuid) || !e.getFlag(MODULE_ID, "basic") || e.disabled) continue;
@@ -486,6 +513,61 @@ function effectsRow(actor) {
     // Снимать эффекты может владелец актёра (игрок — своего персонажа) и ГМ.
     canRemove: actor.isOwner
   };
+}
+
+/* ---------- Чувства (строка в левой панели) ---------- */
+
+/** Короткие подписи чувств dnd5e; полные названия берём из CONFIG.DND5E.senses (переводит модуль локализации). */
+const SENSES_SHORT = { darkvision: "т. зрение", blindsight: "слеп. зрение", tremorsense: "чув. вибрации", truesight: "ист. зрение" };
+
+/**
+ * Чувства актёра: ненулевые дальности из attributes.senses.ranges (в Foundry уже посчитаны — например,
+ * тёмное зрение от расы) и особые чувства (senses.special). В панели — только тёмное зрение,
+ * полный список — по Shift + клик (`all`). null — чувств нет.
+ */
+function sensesLine(senses) {
+  if (!senses) return null;
+  const ranges = senses.ranges ?? senses;
+  const units = UNITS[senses.units] ?? senses.units ?? "фт";
+  const full = [];
+  let dark = null;
+  for (const [key, short] of Object.entries(SENSES_SHORT)) {
+    const range = Number(ranges?.[key]) || 0;
+    if (range <= 0) continue;
+    const label = CONFIG.DND5E?.senses?.[key]?.label ?? CONFIG.DND5E?.senses?.[key];
+    const line = `${typeof label === "string" ? label : short} ${range} ${units}`;
+    full.push(line);
+    if (key === "darkvision") dark = { text: `${short} ${range}`, hint: line };
+  }
+  if (senses.special) full.push(senses.special);
+  if (!full.length) return null;
+  const more = full.length > (dark ? 1 : 0);
+  const shiftHint = "Shift + клик — все чувства";
+  return {
+    // Нет тёмного зрения, но есть другие чувства — в панели подпись «чувства», список по Shift + клик.
+    text: dark?.text ?? null,
+    units,
+    hint: dark ? (more ? `${dark.hint}. ${shiftHint}` : dark.hint) : shiftHint,
+    all: full.join(", ")
+  };
+}
+
+/* ---------- Кости хитов (у кнопки короткого отдыха) ---------- */
+
+/** Кости хитов персонажа: по классам — уровни минус потраченные (classes.*.system.hd.spent). */
+function hitDice(actor) {
+  if (actor.type !== "character") return null;
+  let max = 0;
+  let spent = 0;
+  const kinds = new Set();
+  for (const item of actor.items) {
+    if (item.type !== "class") continue;
+    max += Number(item.system.levels) || 0;
+    spent += Number(item.system.hd?.spent) || 0;
+    if (item.system.hd?.denomination) kinds.add(item.system.hd.denomination);
+  }
+  if (!max) return null;
+  return { value: Math.max(0, max - spent), max, kinds: [...kinds].join(", ") };
 }
 
 /* ---------- Режим ГМа: легендарные действия и сопротивление, видимость бросков ---------- */
@@ -518,11 +600,10 @@ function visibilityModes() {
   const key = rollModeSettingKey();
   if (!game.user.isGM || !key) return null;
   const modes = CONST.DICE_ROLL_MODES ?? { PUBLIC: "publicroll", PRIVATE: "gmroll" };
-  const current = game.settings.get("core", key);
-  return [
-    { mode: modes.PUBLIC, label: "Открыто", hint: "Броски видят все", active: current === modes.PUBLIC },
-    { mode: modes.PRIVATE, label: "Скрыто", hint: "Броски видит только ГМ", active: current !== modes.PUBLIC }
-  ];
+  const open = game.settings.get("core", key) === modes.PUBLIC;
+  return open
+    ? { open: true, next: modes.PRIVATE, label: "Броски всем", hint: "Броски видят все. Клик — видит только ГМ" }
+    : { open: false, next: modes.PUBLIC, label: "Броски ГМу", hint: "Броски видит только ГМ. Клик — видят все" };
 }
 
 /* ---------- Экономия действий ---------- */
@@ -754,6 +835,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       endTurn: KhvorHud.#endTurn,
       rollInitiative: KhvorHud.#rollInitiative,
       openSkills: KhvorHud.#openSkills,
+      showSenses: KhvorHud.#showSenses,
       setRollMode: KhvorHud.#setRollMode,
       useAbility: KhvorHud.#useAbility,
       basicAction: KhvorHud.#basicAction,
@@ -776,7 +858,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   actor = null;
 
   /** Выбранная вкладка и страница панели способностей; сбрасываются при смене актёра. */
-  panel = { actorId: null, tab: "all", group: null, page: 0 };
+  panel = { actorId: null, tab: "favorites", group: null, page: 0 };
 
   /** Собирает данные для шаблона. */
   async _prepareContext() {
@@ -788,7 +870,8 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     const sys = actor.system;
     const attr = sys.attributes ?? {};
 
-    if (this.panel.actorId !== actor.id) this.panel = { actorId: actor.id, tab: "all", group: null, page: 0 };
+    // Новый актёр — открываем «Избранное»; если его нет, paginate() сам переключит на «Все».
+    if (this.panel.actorId !== actor.id) this.panel = { actorId: actor.id, tab: "favorites", group: null, page: 0 };
     const abilities = paginate(collectAbilities(actor), {
       tab: this.panel.tab,
       group: this.panel.group,
@@ -835,10 +918,12 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       init: signed(attr.init?.total ?? attr.init?.mod ?? 0),
       speed: movement.speeds?.walk ?? movement.walk ?? 0,
       units: UNITS[movement.units] ?? movement.units ?? "",
-      // У заклинателей — СЛ заклинаний, у остальных — пассивная внимательность.
-      extra: spellDC
-        ? { value: spellDC, label: "СЛ заклинаний", short: "СЛ закл." }
-        : { value: sys.skills?.prc?.passive ?? "—", label: "Пассивная внимательность", short: "пасс. вним." },
+      // У заклинателей — СЛ и бонус атаки заклинаниями (attributes.spell), пассивная внимательность — у всех.
+      spellDC,
+      spellAttack: spellDC != null && Number.isFinite(Number(attr.spell?.attack)) ? signed(Number(attr.spell.attack)) : null,
+      spellAbility: attr.spell?.abilityLabel ?? "",
+      passive: sys.skills?.prc?.passive ?? "—",
+      senses: sensesLine(attr.senses),
       move: movement_(actor, movement.speeds?.walk ?? movement.walk ?? 0),
       modes: [
         { id: "advantage", label: "Преим.", cls: "adv", hint: "Следующий бросок — с преимуществом" },
@@ -846,6 +931,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
         { id: "disadvantage", label: "Помеха", cls: "dis", hint: "Следующий бросок — с помехой" }
       ].map((m) => ({ ...m, active: m.id === rollMode })),
       canRest: actor.type === "character",
+      hd: hitDice(actor),
       basic: BASIC_ACTIONS.map((b) => ({ ...b, active: basicActive(actor, b) })),
       // Концентрация: dnd5e вешает на актёра состояние «concentrating».
       concentrating: actor.statuses?.has(CONFIG.DND5E?.specialStatusEffects?.CONCENTRATING ?? "concentrating"),
@@ -860,6 +946,8 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       } : null,
       panel: abilities,
       inCombat: !!economy,
+      // Вне боя HUD свёрнут до портрета и сферы, раскрывается при наведении (настройка collapseOutOfCombat).
+      collapsed: !economy && game.settings.get(MODULE_ID, "collapseOutOfCombat"),
       effects: effectsRow(actor),
       legact: resourceGems(sys.resources?.legact),
       legres: resourceGems(sys.resources?.legres),
@@ -884,7 +972,50 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     this._lastActorId = this.actor?.id;
 
     this.#bindTooltips();
+    this.#bindContextMenus();
+    this.#alignHeights();
     this.#fitColumns(context);
+  }
+
+  /** Левая панель, средняя и правый блок — одной высоты (по самой высокой): ровный верхний край HUD. */
+  #alignHeights() {
+    const panels = [...this.element.querySelectorAll(".kh-panel, .kh-center, .kh-right")];
+    if (!panels.length) return;
+    for (const el of panels) el.style.minHeight = "";
+    const h = Math.max(...panels.map((el) => el.offsetHeight));
+    for (const el of panels) el.style.minHeight = `${h}px`;
+  }
+
+  /**
+   * Правый клик: по плитке — открыть лист предмета (у «cast» — сотворяемого заклинания);
+   * по иконке эффекта — выключить или включить эффект; по спасброскам от смерти — сбросить их.
+   */
+  #bindContextMenus() {
+    const actor = this.actor;
+    if (!actor) return;
+    const on = (selector, handler) => {
+      for (const el of this.element.querySelectorAll(selector)) {
+        el.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          handler(el, event);
+        });
+      }
+    };
+    on(".kh-tile", (el) => {
+      const item = actor.items.get(el.dataset.itemId);
+      const activity = item?.system.activities?.get(el.dataset.activityId);
+      const spell = activity?.type === "cast"
+        ? actor.items.find((i) => i.getFlag("dnd5e", "cachedFor") === `.Item.${item.id}.Activity.${activity.id}`)
+        : null;
+      (spell ?? item)?.sheet?.render(true);
+    });
+    if (!actor.isOwner) return;
+    on(".kh-effect", async (el) => {
+      const effect = await fromUuid(el.dataset.uuid);
+      if (effect) await effect.update({ disabled: !effect.disabled });
+    });
+    on(".kh-death", () => actor.update({ "system.attributes.death.success": 0, "system.attributes.death.failure": 0 }));
   }
 
   /** Подгонка числа столбцов: cols — найденное значение, tries — защита от бесконечной перерисовки. */
@@ -903,6 +1034,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   #fitColumns(context) {
     const panel = context.panel;
     if (!panel?.columns) return;
+    // Свёрнутые панели невидимы, но место занимают — мерить можно и так.
     const slack = freeAreaRight() - 16 - this.element.getBoundingClientRect().right;
     let target = panel.columns;
     if (slack < 0) target -= Math.ceil(-slack / TILE_WIDTH);
@@ -1026,13 +1158,29 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
    * подхватывает использование сам.
    */
   static async #useAbility(event, target) {
+    return this.useAbility(target.dataset.itemId, target.dataset.activityId, event);
+  }
+
+  /**
+   * Горячая клавиша 1–0: использовать плитку с этой цифрой на текущей странице.
+   * Возвращает true, если клавиша обработана (тогда макрос с той же клавиши не запускается).
+   */
+  useHotkey(key, event) {
+    if (!this.actor || !this.rendered) return false;
+    const tile = this.element.querySelector(`.kh-tile[data-hotkey="${key}"]`);
+    if (!tile) return false;
+    this.useAbility(tile.dataset.itemId, tile.dataset.activityId, event);
+    return true;
+  }
+
+  /** Использовать активность предмета актёра HUD (клик по плитке или горячая клавиша). */
+  async useAbility(itemId, activityId, event) {
     const actor = this.actor;
     if (!actor) return;
     if (!actor.isOwner) {
       ui.notifications.warn("Это не ваш персонаж.");
       return;
     }
-    const { itemId, activityId } = target.dataset;
     const item = actor.items.get(itemId);
     const activity = item?.system.activities?.get(activityId);
     if (!activity) {
@@ -1156,7 +1304,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
   static async #setVisibility(event, target) {
     const key = rollModeSettingKey();
     if (!game.user.isGM || !key) return;
-    await game.settings.set("core", key, target.dataset.mode);
+    await game.settings.set("core", key, target.dataset.next);
     this.render();
   }
 
@@ -1216,6 +1364,19 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     const actor = this.actor;
     if (!actor?.isOwner) return;
     return actor.rollDeathSave({ event });
+  }
+
+  /**
+   * Shift + клик по строке чувств — подсказка со всеми чувствами. Подменяем data-tooltip до ухода мыши:
+   * иначе отложенная подсказка Foundry при наведении вернёт короткий текст.
+   */
+  static #showSenses(event, target) {
+    const all = target.dataset.all;
+    if (!event.shiftKey || !all || !game.tooltip) return;
+    const hint = target.dataset.tooltip;
+    target.dataset.tooltip = all;
+    game.tooltip.activate(target);
+    target.addEventListener("pointerleave", () => { target.dataset.tooltip = hint; }, { once: true });
   }
 
   /** Кнопка «Навыки»: открыть или закрыть панель «Проверки и навыки». */
@@ -1293,6 +1454,16 @@ class KhvorInitiative extends HandlebarsApplicationMixin(ApplicationV2) {
     super._onRender?.(context, options);
     // По центру свободной области: слева от боковой панели Foundry.
     this.element.style.setProperty("--kh-area-right", `${freeAreaRight()}px`);
+    // Наведение подсвечивает токен на сцене; двойной клик — сделать целью (Shift — добавить к целям).
+    for (const el of this.element.querySelectorAll(".kh-init")) {
+      const token = () => game.combat?.combatants.get(el.dataset.id)?.token?.object;
+      el.addEventListener("mouseenter", (event) => token()?._onHoverIn?.(event, { hoverOutOthers: true }));
+      el.addEventListener("mouseleave", (event) => token()?._onHoverOut?.(event));
+      el.addEventListener("dblclick", (event) => {
+        const t = token();
+        if (t) t.setTarget(!t.isTargeted, { releaseOthers: !event.shiftKey });
+      });
+    }
   }
 
   static #focusCombatant(event, target) {
@@ -1424,6 +1595,39 @@ Hooks.once("init", () => {
     onChange: () => game.modules.get(MODULE_ID).api?.initiative?.render({ force: true })
   });
 
+  game.settings.register(MODULE_ID, "collapseOutOfCombat", {
+    name: "KHVOR.Settings.collapseOutOfCombat.name",
+    hint: "KHVOR.Settings.collapseOutOfCombat.hint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: () => game.modules.get(MODULE_ID).api?.hud?.render()
+  });
+
+  game.settings.register(MODULE_ID, "hideChatInput", {
+    name: "KHVOR.Settings.hideChatInput.name",
+    hint: "KHVOR.Settings.hideChatInput.hint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true,
+    onChange: (value) => document.body.classList.toggle("khvor-hide-chat-input", value)
+  });
+
+  // Горячие клавиши 1–0: плитки текущей страницы HUD. Приоритет выше обычного, поэтому, пока HUD открыт
+  // и плитка с этой цифрой есть, макрос с той же клавиши не запускается; иначе клавиша уходит Foundry.
+  const KEYS = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8", "Digit9", "Digit0"];
+  KEYS.forEach((code, i) => {
+    const key = code.slice(-1);
+    game.keybindings.register(MODULE_ID, `tile${key}`, {
+      name: `HUD Хвора: плитка ${key}`,
+      editable: [{ key: code }],
+      precedence: CONST.KEYBINDING_PRECEDENCE.PRIORITY,
+      onDown: (context) => game.modules.get(MODULE_ID).api?.hud?.useHotkey(key, context?.event) ?? false
+    });
+  });
+
   game.settings.register(MODULE_ID, "hidePlayers", {
     name: "KHVOR.Settings.hidePlayers.name",
     hint: "KHVOR.Settings.hidePlayers.hint",
@@ -1461,6 +1665,7 @@ Hooks.once("ready", () => {
   game.modules.get(MODULE_ID).api = { hud, initiative, skills };
   document.body.classList.toggle("khvor-hide-hotbar", game.settings.get(MODULE_ID, "hideHotbar"));
   document.body.classList.toggle("khvor-hide-players", game.settings.get(MODULE_ID, "hidePlayers"));
+  document.body.classList.toggle("khvor-hide-chat-input", game.settings.get(MODULE_ID, "hideChatInput"));
 
   // Перерисовка не чаще раза в 50 мс, даже если событий много подряд.
   const refresh = foundry.utils.debounce(async () => {

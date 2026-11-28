@@ -288,20 +288,24 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 
 /* ---------- Панель: две строки — кнопки и режим броска сверху, цифры и действия снизу ---------- */
 .kh-panel {
+  box-sizing: border-box; /* min-height ставит main.js по высоте средней панели */
   position: relative; /* для ряда эффектов над панелью */
   display: flex;
   align-items: center;
+  justify-content: space-between; /* ширина постоянная: щит, цифры и столбец кнопок расходятся по ней */
   gap: 9px;
+  width: 261px;
   padding: 0 2px 0 26px; /* слева место под край сферы */
   border-style: solid;
   border-width: 16px;
   border-image: url("../assets/panel-frame.png") 64 fill / 16px / 0 stretch;
 }
-.kh-panel-btns { display: grid; grid-template-columns: repeat(2, 28px); gap: 3px; }
+/* Кнопки инициативы, навыков и отдыха — одним столбцом справа */
+.kh-panel-btns { display: flex; flex-direction: column; gap: 4px; flex: none; }
 .kh-icon-btn {
   display: block;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 4px;
   transition: filter 0.15s, transform 0.15s;
 }
@@ -326,11 +330,12 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-ac-label { font-size: 10px; color: var(--kh-muted); }
 
 /* СЛ и инициатива столбиком: число крупно, подпись мелко справа */
-.kh-stats { display: flex; flex-direction: column; gap: 3px; }
+.kh-stats { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 0 1 auto; } /* может сжиматься: кнопки не вылезают за панель */
 .kh-stat { display: flex; align-items: baseline; gap: 4px; }
 .kh-stat-value { min-width: 26px; font-family: var(--kh-serif); font-weight: 700; font-size: 20px; line-height: 1; white-space: nowrap; }
 .kh-stat-value small { font-family: var(--kh-sans); font-size: 12px; color: var(--kh-muted); }
 .kh-stat-label { font-size: 11px; color: var(--kh-muted); white-space: nowrap; }
+.kh-stat-value.kh-stat-second { min-width: 0; margin-left: 4px; } /* «+8 атака» в одной строке с СЛ */
 
 /* Скорость и полоска остатка движения (как в BG3): деление — 5 фт */
 .kh-move { display: flex; flex-direction: column; gap: 3px; margin-bottom: 2px; }
@@ -380,6 +385,7 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   gap: 12px;
 }
 .kh-center {
+  box-sizing: border-box; /* min-height ставит main.js по самой высокой из трёх панелей */
   position: relative;
   min-width: 420px; /* чтобы вкладки всегда помещались в одну строку */
   pointer-events: auto;
@@ -487,7 +493,7 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   overflow: hidden;
   width: 50px;
   min-height: 2.4em;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.2;
   text-align: center;
   color: var(--kh-muted);
@@ -517,7 +523,15 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-group-filter:hover { color: var(--kh-text); background: #1b1a20; }
 .kh-group.is-active .kh-group-filter { color: var(--kh-text); box-shadow: inset 0 -2px 0 var(--kh-blood); }
 /* Ромб экономии действий: в бою кнопка; потрачено — пустое гнездо */
-.kh-gem { display: block; padding: 2px; border-radius: 3px; transition: filter 0.15s; }
+.kh-gem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px; /* зона клика не меньше 24 px */
+  border-radius: 3px;
+  transition: filter 0.15s;
+}
 .kh-gem:hover { filter: brightness(1.4) drop-shadow(0 0 4px rgba(255, 255, 255, 0.4)); }
 .kh-gem.is-spent img { opacity: 0.8; }
 /* Группа, чьё действие в этом ходу потрачено: плитки приглушены, но нажимаются */
@@ -567,6 +581,7 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  white-space: nowrap;
   color: var(--kh-muted);
 }
 .kh-tab:hover { color: var(--kh-text); background: #1b1a20; }
@@ -581,8 +596,8 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border: 1px solid var(--kh-iron);
   border-radius: 3px;
   background: #0e0d11;
@@ -665,14 +680,12 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-slot-row.is-pact .kh-slot-label { font-size: 14px; color: var(--kh-violet); }
 .kh-slot-row img { width: 14px; height: 16px; object-fit: contain; }
 
-/* Значок круга заклинания на плитке: синий, у договора фиолетовый */
-.kh-badge.is-level { font-family: var(--kh-serif); font-size: 13px; color: var(--kh-arcane); }
-.kh-badge.is-level.is-pact { color: var(--kh-violet); }
-
 /* ---------- Правый блок: режим броска, базовые действия 3 × 2, «Завершить ход» (в бою) ---------- */
 .kh-right {
+  box-sizing: border-box; /* min-height ставит main.js по высоте средней панели */
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 7px;
   pointer-events: auto;
   border-style: solid;
@@ -749,8 +762,8 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-init-portrait {
   position: relative;
   display: block;
-  width: 72px;
-  height: 96px; /* пропорция рамки 239:320 */
+  width: 61px;
+  height: 82px; /* пропорция рамки 239:320 */
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.7));
 }
 /* Окно рамки initiative-frame: x 16–222, y 46–274 из 239×320 */
@@ -780,8 +793,8 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-init.is-enemy .kh-init-portrait::before { background: #8e1420; }
 .kh-init-hp {
   display: block;
-  width: 63px;
-  height: 6px;
+  width: 54px;
+  height: 5px;
   border-radius: 1px;
   background: #1d1c22;
   box-shadow: 0 0 0 1px #000;
@@ -791,19 +804,19 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-init-hp.is-unknown i { display: none; }
 /* Текущий ход: крупнее, красное свечение и ромб сверху */
 .kh-init.is-current .kh-init-portrait {
-  width: 90px;
-  height: 120px;
-  filter: drop-shadow(0 0 12px rgba(216, 50, 63, 0.85)) drop-shadow(0 4px 8px rgba(0, 0, 0, 0.7));
+  width: 77px;
+  height: 103px;
+  filter: drop-shadow(0 0 11px rgba(216, 50, 63, 0.85)) drop-shadow(0 4px 8px rgba(0, 0, 0, 0.7));
 }
-.kh-init.is-current .kh-init-hp { width: 81px; }
+.kh-init.is-current .kh-init-hp { width: 69px; }
 .kh-init.is-current::before {
   content: "";
   position: absolute;
-  top: -6px;
+  top: -5px;
   left: 50%;
   z-index: 1;
-  width: 13px;
-  height: 13px;
+  width: 11px;
+  height: 11px;
   transform: translateX(-50%) rotate(45deg);
   background: var(--kh-blood);
   box-shadow: 0 0 0 1px #000, 0 0 6px var(--kh-blood);
@@ -879,13 +892,13 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-x:hover { background: #3a141a; color: #fff; }
 .kh-effect .kh-x {
   position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 14px;
-  height: 14px;
+  top: -8px;
+  right: -8px;
+  width: 18px;
+  height: 18px;
   background: #3a141a;
   box-shadow: 0 0 0 1px #000;
-  font-size: 12px;
+  font-size: 14px;
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -983,10 +996,114 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 
 /* ---------- Режим ГМа: легендарные действия и сопротивление ---------- */
 .kh-legact-label { font-size: 14px; color: #ff8a94; }
-.kh-res-gem { display: block; padding: 1px; border-radius: 3px; transition: filter 0.15s; }
+.kh-res-gem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  min-height: 24px; /* по высоте не меньше 24 px; ромбы стоят плотно */
+  border-radius: 3px;
+  transition: filter 0.15s;
+}
 .kh-res-gem img { display: block; width: 14px; height: 16px; object-fit: contain; }
 .kh-res-gem:hover { filter: brightness(1.4) drop-shadow(0 0 4px rgba(255, 77, 94, 0.6)); }
 .kh-legres { display: flex; align-items: center; gap: 2px; }
 .kh-legres .kh-stat-label { margin-right: 4px; }
 .kh-legres .kh-res-gem img { width: 12px; height: 14px; }
-.kh-seg-visibility .kh-seg-btn.active { background: #2a2532; color: #fff; }
+/* ---------- Кто видит броски (только ГМ): одна кнопка с глазом, не похожа на «Преим./Помеха» ---------- */
+.kh-visibility {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px dashed var(--kh-iron);
+  border-radius: 12px;
+  font-size: 11px;
+  color: var(--kh-muted);
+}
+.kh-visibility:hover { color: var(--kh-text); border-color: #6e6b78; }
+.kh-visibility.is-hidden-rolls { border-color: #6b3fa0; color: #d9c6ff; }
+
+/* Круг заклинания в левом верхнем углу плитки */
+.kh-circle {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(8, 7, 10, 0.88);
+  box-shadow: 0 0 0 1px #000;
+  font-family: var(--kh-serif);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 13px;
+  color: var(--kh-arcane);
+}
+.kh-circle.is-pact { color: var(--kh-violet); }
+
+/* Кости хитов на иконке короткого отдыха */
+.kh-icon-btn { position: relative; }
+.kh-hd {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: #0c0b0e;
+  box-shadow: 0 0 0 1px #000;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+  font-variant-numeric: lining-nums;
+  color: var(--kh-text);
+}
+
+/* Выключенный эффект (правый клик по иконке) */
+.kh-effect.is-disabled img { filter: grayscale(1) brightness(0.5); }
+.kh-effect.is-disabled { border-style: dashed; }
+
+/* Цифра горячей клавиши (1–0) в левом нижнем углу плитки */
+.kh-hotkey {
+  position: absolute;
+  left: 2px;
+  bottom: 1px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: #d8d3e0;
+  text-shadow: 0 0 2px #000, 0 0 3px #000, 0 1px 2px #000;
+  pointer-events: none;
+}
+
+/* Вне боя HUD свёрнут: видны портрет и сфера, панели невидимы (но место занимают — ширина не скачет).
+   Наведение на портрет или сферу раскрывает всё; ряд эффектов виден и в свёрнутом виде. */
+.kh-root.is-collapsed:not(:hover) .kh-panel,
+.kh-root.is-collapsed:not(:hover) .kh-center,
+.kh-root.is-collapsed:not(:hover) .kh-right {
+  visibility: hidden;
+  pointer-events: none;
+}
+.kh-root.is-collapsed:not(:hover) .kh-effects { visibility: visible; pointer-events: auto; }
+
+/* Поле ввода чата над сценой (когда открыта не вкладка «Чат») прячется, пока открыт HUD */
+body.khvor-hud-active.khvor-hide-chat-input #chat-notifications > #chat-message,
+body.khvor-hud-active.khvor-hide-chat-input #chat-notifications > .dice-tray,
+body.khvor-hud-active.khvor-hide-chat-input #chat-notifications > #chat-controls {
+  display: none !important;
+}
+
+/* Чувства — мелкая строка внизу столбца цифр левой панели */
+.kh-senses {
+  display: block;
+  max-width: 100%;
+  cursor: help;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--kh-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kh-senses small { font-size: 10px; }
