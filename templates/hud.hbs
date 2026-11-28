@@ -74,14 +74,24 @@
           <span class="kh-move-value">{{#if move.tracked}}{{move.left}}<small>/{{move.total}}</small>{{else}}{{move.total}}{{/if}} <small>{{units}}</small></span>
           <span class="kh-move-bar">{{#each move.segments}}<i class="{{#if this}}on{{/if}}"></i>{{/each}}</span>
         </div>
-        <div class="kh-stat" data-tooltip="{{extra.label}}">
-          <span class="kh-stat-value">{{extra.value}}</span>
-          <span class="kh-stat-label">{{extra.short}}</span>
+        {{#if spellDC}}
+        <div class="kh-stat" data-tooltip="СЛ заклинаний">
+          <span class="kh-stat-value">{{spellDC}}</span>
+          <span class="kh-stat-label">СЛ закл.</span>
+        </div>
+        {{/if}}
+        <div class="kh-stat" data-tooltip="Пассивная внимательность">
+          <span class="kh-stat-value">{{passive}}</span>
+          <span class="kh-stat-label">пасс. вним.</span>
         </div>
         <div class="kh-stat" data-tooltip="Инициатива">
           <span class="kh-stat-value">{{init}}</span>
           <span class="kh-stat-label">иниц.</span>
         </div>
+        {{#if senses}}
+        {{!-- Чувства: тёмное зрение и т. п. (полные названия в подсказке) --}}
+        <div class="kh-senses" data-tooltip="{{senses.hint}}">{{senses.text}} <small>{{senses.units}}</small></div>
+        {{/if}}
         {{#if legres}}
         {{!-- Легендарное сопротивление NPC: горит — есть; клик по горящему — использовать, по пустому — вернуть --}}
         <div class="kh-legres" data-tooltip="Легендарное сопротивление: {{legres.value}} из {{legres.max}}">

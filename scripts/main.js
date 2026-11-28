@@ -515,6 +515,36 @@ function effectsRow(actor) {
   };
 }
 
+/* ---------- Чувства (строка в левой панели) ---------- */
+
+/** Короткие подписи чувств dnd5e; полные названия берём из CONFIG.DND5E.senses (переводит модуль локализации). */
+const SENSES_SHORT = { darkvision: "т. зрение", blindsight: "слеп. зрение", tremorsense: "чув. вибрации", truesight: "ист. зрение" };
+
+/**
+ * Чувства актёра: ненулевые дальности из attributes.senses.ranges (в Foundry уже посчитаны — например,
+ * тёмное зрение от расы) и особые чувства (senses.special). null — чувств нет.
+ */
+function sensesLine(senses) {
+  if (!senses) return null;
+  const ranges = senses.ranges ?? senses;
+  const units = UNITS[senses.units] ?? senses.units ?? "фт";
+  const parts = [];
+  const full = [];
+  for (const [key, short] of Object.entries(SENSES_SHORT)) {
+    const range = Number(ranges?.[key]) || 0;
+    if (range <= 0) continue;
+    parts.push(`${short} ${range}`);
+    const label = CONFIG.DND5E?.senses?.[key]?.label ?? CONFIG.DND5E?.senses?.[key] ?? short;
+    full.push(`${typeof label === "string" ? label : short} ${range} ${units}`);
+  }
+  if (senses.special) {
+    parts.push(senses.special);
+    full.push(senses.special);
+  }
+  if (!parts.length) return null;
+  return { text: parts.join(" · "), units, hint: full.join(", ") };
+}
+
 /* ---------- Кости хитов (у кнопки короткого отдыха) ---------- */
 
 /** Кости хитов персонажа: по классам — уровни минус потраченные (classes.*.system.hd.spent). */
@@ -881,9 +911,10 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       speed: movement.speeds?.walk ?? movement.walk ?? 0,
       units: UNITS[movement.units] ?? movement.units ?? "",
       // У заклинателей — СЛ заклинаний, у остальных — пассивная внимательность.
-      extra: spellDC
-        ? { value: spellDC, label: "СЛ заклинаний", short: "СЛ закл." }
-        : { value: sys.skills?.prc?.passive ?? "—", label: "Пассивная внимательность", short: "пасс. вним." },
+      // У заклинателей — СЛ заклинаний, пассивная внимательность — у всех.
+      spellDC,
+      passive: sys.skills?.prc?.passive ?? "—",
+      senses: sensesLine(attr.senses),
       move: movement_(actor, movement.speeds?.walk ?? movement.walk ?? 0),
       modes: [
         { id: "advantage", label: "Преим.", cls: "adv", hint: "Следующий бросок — с преимуществом" },

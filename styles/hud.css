@@ -301,7 +301,7 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   border-image: url("../assets/panel-frame.png") 64 fill / 16px / 0 stretch;
 }
 /* Кнопки инициативы, навыков и отдыха — одним столбцом справа */
-.kh-panel-btns { display: flex; flex-direction: column; gap: 4px; }
+.kh-panel-btns { display: flex; flex-direction: column; gap: 4px; flex: none; }
 .kh-icon-btn {
   display: block;
   width: 32px;
@@ -330,7 +330,7 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-ac-label { font-size: 10px; color: var(--kh-muted); }
 
 /* СЛ и инициатива столбиком: число крупно, подпись мелко справа */
-.kh-stats { display: flex; flex-direction: column; gap: 3px; }
+.kh-stats { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 0 1 auto; } /* может сжиматься: кнопки не вылезают за панель */
 .kh-stat { display: flex; align-items: baseline; gap: 4px; }
 .kh-stat-value { min-width: 26px; font-family: var(--kh-serif); font-weight: 700; font-size: 20px; line-height: 1; white-space: nowrap; }
 .kh-stat-value small { font-family: var(--kh-sans); font-size: 12px; color: var(--kh-muted); }
@@ -1092,3 +1092,15 @@ body.khvor-hud-active.khvor-hide-chat-input #chat-notifications > .dice-tray,
 body.khvor-hud-active.khvor-hide-chat-input #chat-notifications > #chat-controls {
   display: none !important;
 }
+
+/* Чувства — мелкая строка внизу столбца цифр левой панели */
+.kh-senses {
+  max-width: 100%;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--kh-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kh-senses small { font-size: 10px; }
