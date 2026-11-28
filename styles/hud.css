@@ -675,10 +675,6 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-slot-row.is-pact .kh-slot-label { font-size: 14px; color: var(--kh-violet); }
 .kh-slot-row img { width: 14px; height: 16px; object-fit: contain; }
 
-/* Значок круга заклинания на плитке: синий, у договора фиолетовый */
-.kh-badge.is-level { font-family: var(--kh-serif); font-size: 13px; color: var(--kh-arcane); }
-.kh-badge.is-level.is-pact { color: var(--kh-violet); }
-
 /* ---------- Правый блок: режим броска, базовые действия 3 × 2, «Завершить ход» (в бою) ---------- */
 .kh-right {
   box-sizing: border-box; /* min-height ставит main.js по высоте средней панели */
@@ -1025,7 +1021,7 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-visibility:hover { color: var(--kh-text); border-color: #6e6b78; }
 .kh-visibility.is-hidden-rolls { border-color: #6b3fa0; color: #d9c6ff; }
 
-/* Круг заклинания в левом верхнем углу плитки (справа — число ячеек «2 +3») */
+/* Круг заклинания в левом верхнем углу плитки */
 .kh-circle {
   position: absolute;
   top: 1px;
@@ -1041,7 +1037,6 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
   color: var(--kh-arcane);
 }
 .kh-circle.is-pact { color: var(--kh-violet); }
-.kh-badge.is-level { font-family: var(--kh-sans); font-size: 10px; }
 
 /* Кости хитов на иконке короткого отдыха */
 .kh-icon-btn { position: relative; }

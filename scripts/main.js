@@ -233,20 +233,6 @@ function displayName(item, activity) {
 }
 
 /**
- * Есть ли у актёра ячейка, чтобы сотворить заклинание круга level.
- * Обычные заклинания можно творить и ячейкой договора, заклинания договора — только ею.
- * Остаток ячеек — spells.spellN.value / spells.pact.value (так же их читает макрос снимка Dnd Hub).
- */
-function hasSlot(actor, level, method) {
-  const spells = actor.system.spells ?? {};
-  const pact = spells.pact;
-  const pactOk = (pact?.value ?? 0) > 0 && (pact?.level ?? 0) >= level;
-  if (method === "pact") return pactOk;
-  for (let l = level; l <= 9; l++) if ((spells[`spell${l}`]?.value ?? 0) > 0) return true;
-  return pactOk;
-}
-
-/**
  * Сколько ячеек для заклинания круга level: same — ячейки этого круга, higher — круги выше.
  * Ячейка договора считается по своему кругу; заклинания договора творятся только ею.
  */
@@ -312,15 +298,14 @@ function tileState(actor, item, activity, groupKey) {
   }
   if (uses && uses.value === 0) state.spent = true;
 
-  // Заклинание за ячейку: круг «III» в левом углу, справа — сколько ячеек: «2 +3» (2 этого круга
-  // и ещё 3 выше). Плитка бледнеет, если подходящих ячеек не осталось.
+  // Заклинание за ячейку: круг «III» в левом углу (у договора фиолетовый). Плитка бледнеет,
+  // если ячеек этого круга и выше не осталось. Число ячеек на плитке не пишем — Нокс решил, что оно
+  // непонятно с первого взгляда; остаток видно по ромбам ячеек над панелью.
   const level = item.type === "spell" ? item.system.level ?? 0 : 0;
   if (level > 0 && activity.type !== "forward" && !consumesItem && !uses) {
     state.circle = ROMAN[level];
     state.pact = item.system.method === "pact";
     const { same, higher } = slotCounts(actor, level, item.system.method);
-    state.badge = higher > 0 ? `${same} +${higher}` : `${same}`;
-    state.level = true;
     if (same + higher === 0) state.spent = true;
   }
 
