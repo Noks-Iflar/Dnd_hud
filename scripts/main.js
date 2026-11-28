@@ -522,27 +522,34 @@ const SENSES_SHORT = { darkvision: "т. зрение", blindsight: "слеп. з
 
 /**
  * Чувства актёра: ненулевые дальности из attributes.senses.ranges (в Foundry уже посчитаны — например,
- * тёмное зрение от расы) и особые чувства (senses.special). null — чувств нет.
+ * тёмное зрение от расы) и особые чувства (senses.special). В панели — только тёмное зрение,
+ * полный список — по Shift + клик (`all`). null — чувств нет.
  */
 function sensesLine(senses) {
   if (!senses) return null;
   const ranges = senses.ranges ?? senses;
   const units = UNITS[senses.units] ?? senses.units ?? "фт";
-  const parts = [];
   const full = [];
+  let dark = null;
   for (const [key, short] of Object.entries(SENSES_SHORT)) {
     const range = Number(ranges?.[key]) || 0;
     if (range <= 0) continue;
-    parts.push(`${short} ${range}`);
-    const label = CONFIG.DND5E?.senses?.[key]?.label ?? CONFIG.DND5E?.senses?.[key] ?? short;
-    full.push(`${typeof label === "string" ? label : short} ${range} ${units}`);
+    const label = CONFIG.DND5E?.senses?.[key]?.label ?? CONFIG.DND5E?.senses?.[key];
+    const line = `${typeof label === "string" ? label : short} ${range} ${units}`;
+    full.push(line);
+    if (key === "darkvision") dark = { text: `${short} ${range}`, hint: line };
   }
-  if (senses.special) {
-    parts.push(senses.special);
-    full.push(senses.special);
-  }
-  if (!parts.length) return null;
-  return { text: parts.join(" · "), units, hint: full.join(", ") };
+  if (senses.special) full.push(senses.special);
+  if (!full.length) return null;
+  const more = full.length > (dark ? 1 : 0);
+  const shiftHint = "Shift + клик — все чувства";
+  return {
+    // Нет тёмного зрения, но есть другие чувства — в панели подпись «чувства», список по Shift + клик.
+    text: dark?.text ?? null,
+    units,
+    hint: dark ? (more ? `${dark.hint}. ${shiftHint}` : dark.hint) : shiftHint,
+    all: full.join(", ")
+  };
 }
 
 /* ---------- Кости хитов (у кнопки короткого отдыха) ---------- */
@@ -828,6 +835,7 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       endTurn: KhvorHud.#endTurn,
       rollInitiative: KhvorHud.#rollInitiative,
       openSkills: KhvorHud.#openSkills,
+      showSenses: KhvorHud.#showSenses,
       setRollMode: KhvorHud.#setRollMode,
       useAbility: KhvorHud.#useAbility,
       basicAction: KhvorHud.#basicAction,
@@ -910,9 +918,10 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
       init: signed(attr.init?.total ?? attr.init?.mod ?? 0),
       speed: movement.speeds?.walk ?? movement.walk ?? 0,
       units: UNITS[movement.units] ?? movement.units ?? "",
-      // У заклинателей — СЛ заклинаний, у остальных — пассивная внимательность.
-      // У заклинателей — СЛ заклинаний, пассивная внимательность — у всех.
+      // У заклинателей — СЛ и бонус атаки заклинаниями (attributes.spell), пассивная внимательность — у всех.
       spellDC,
+      spellAttack: spellDC != null && Number.isFinite(Number(attr.spell?.attack)) ? signed(Number(attr.spell.attack)) : null,
+      spellAbility: attr.spell?.abilityLabel ?? "",
       passive: sys.skills?.prc?.passive ?? "—",
       senses: sensesLine(attr.senses),
       move: movement_(actor, movement.speeds?.walk ?? movement.walk ?? 0),
@@ -1355,6 +1364,19 @@ class KhvorHud extends HandlebarsApplicationMixin(ApplicationV2) {
     const actor = this.actor;
     if (!actor?.isOwner) return;
     return actor.rollDeathSave({ event });
+  }
+
+  /**
+   * Shift + клик по строке чувств — подсказка со всеми чувствами. Подменяем data-tooltip до ухода мыши:
+   * иначе отложенная подсказка Foundry при наведении вернёт короткий текст.
+   */
+  static #showSenses(event, target) {
+    const all = target.dataset.all;
+    if (!event.shiftKey || !all || !game.tooltip) return;
+    const hint = target.dataset.tooltip;
+    target.dataset.tooltip = all;
+    game.tooltip.activate(target);
+    target.addEventListener("pointerleave", () => { target.dataset.tooltip = hint; }, { once: true });
   }
 
   /** Кнопка «Навыки»: открыть или закрыть панель «Проверки и навыки». */

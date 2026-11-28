@@ -75,9 +75,13 @@
           <span class="kh-move-bar">{{#each move.segments}}<i class="{{#if this}}on{{/if}}"></i>{{/each}}</span>
         </div>
         {{#if spellDC}}
-        <div class="kh-stat" data-tooltip="СЛ заклинаний">
+        <div class="kh-stat" data-tooltip="СЛ заклинаний {{spellDC}}{{#if spellAttack}} · бонус атаки заклинанием {{spellAttack}}{{/if}}{{#if spellAbility}} ({{spellAbility}}){{/if}}">
           <span class="kh-stat-value">{{spellDC}}</span>
-          <span class="kh-stat-label">СЛ закл.</span>
+          <span class="kh-stat-label">СЛ</span>
+          {{#if spellAttack}}
+          <span class="kh-stat-value kh-stat-second">{{spellAttack}}</span>
+          <span class="kh-stat-label">атака</span>
+          {{/if}}
         </div>
         {{/if}}
         <div class="kh-stat" data-tooltip="Пассивная внимательность">
@@ -89,8 +93,8 @@
           <span class="kh-stat-label">иниц.</span>
         </div>
         {{#if senses}}
-        {{!-- Чувства: тёмное зрение и т. п. (полные названия в подсказке) --}}
-        <div class="kh-senses" data-tooltip="{{senses.hint}}">{{senses.text}} <small>{{senses.units}}</small></div>
+        {{!-- Чувства: в панели только тёмное зрение, Shift + клик — подсказка со всеми чувствами --}}
+        <button type="button" class="kh-senses" data-action="showSenses" data-all="{{senses.all}}" data-tooltip="{{senses.hint}}" aria-label="Чувства: {{senses.all}}">{{#if senses.text}}{{senses.text}} <small>{{senses.units}}</small>{{else}}чувства{{/if}}</button>
         {{/if}}
         {{#if legres}}
         {{!-- Легендарное сопротивление NPC: горит — есть; клик по горящему — использовать, по пустому — вернуть --}}

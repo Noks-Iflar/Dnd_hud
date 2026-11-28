@@ -335,6 +335,7 @@ body.khvor-hud-active.khvor-hide-players #players { display: none; }
 .kh-stat-value { min-width: 26px; font-family: var(--kh-serif); font-weight: 700; font-size: 20px; line-height: 1; white-space: nowrap; }
 .kh-stat-value small { font-family: var(--kh-sans); font-size: 12px; color: var(--kh-muted); }
 .kh-stat-label { font-size: 11px; color: var(--kh-muted); white-space: nowrap; }
+.kh-stat-value.kh-stat-second { min-width: 0; margin-left: 4px; } /* «+8 атака» в одной строке с СЛ */
 
 /* Скорость и полоска остатка движения (как в BG3): деление — 5 фт */
 .kh-move { display: flex; flex-direction: column; gap: 3px; margin-bottom: 2px; }
@@ -1095,7 +1096,9 @@ body.khvor-hud-active.khvor-hide-chat-input #chat-notifications > #chat-controls
 
 /* Чувства — мелкая строка внизу столбца цифр левой панели */
 .kh-senses {
+  display: block;
   max-width: 100%;
+  cursor: help;
   font-size: 11px;
   line-height: 1.2;
   color: var(--kh-muted);
